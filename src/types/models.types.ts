@@ -6,6 +6,13 @@ export class Judgments {
   decents?: number;
   wayOffs?: number;
   misses: number;
+  totalSteps: number;
+  minesHit: number;
+  totalMines: number;
+  holdsHeld: number;
+  totalHolds: number;
+  rollsHeld: number;
+  totalRolls: number;
 }
 
 export class Player {
@@ -14,7 +21,7 @@ export class Player {
 
   judgments?: Judgments;
 
-  // Scores are recalculates as the the judgments come in.
+  // Scores are recalculated as the the judgments come in.
   score?: number;
   exScore?: number;
 }
@@ -33,7 +40,7 @@ export class Lobby {
 
 export class LobbyInfo {
   code: string;
-  numberPlayers: number;
+  playerCount: number;
 }
 
 export class LOBBYMAN {

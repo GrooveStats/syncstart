@@ -3,10 +3,9 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  WsResponse,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
-import { LOBBYMAN, Lobby, LobbyInfo, Player } from '../types/models.types';
+import { LOBBYMAN, LobbyInfo, Player } from '../types/models.types';
 
 function GenerateLobbyCode() {
   const lobbyCodeLength = 4;
@@ -28,13 +27,13 @@ function MaybeRemovePlayer(player: Player) {
       const lobby = LOBBYMAN.lobbies[code];
       if (player.playerId in lobby.players) {
         delete lobby.players[player.playerId];
-        console.log('Deleted ' + `${player.playerId}` +  'from ' + `${code}`);
+        console.log('Deleted ' + `${player.playerId}` + 'from ' + `${code}`);
       }
 
       // No players left in this lobby, destroy it.
       if (Object.keys(lobby.players).length === 0) {
         delete LOBBYMAN.lobbies[code];
-        console.group('Deleted lobby ' + `${code}`)
+        console.log('Deleted lobby ' + `${code}`);
       }
     }
     delete LOBBYMAN.activePlayers[player.playerId];
@@ -49,7 +48,7 @@ function MaybeRemovePlayer(player: Player) {
 })
 export class EventsGateway {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   @SubscribeMessage('createLobby')
   async createLobby(
@@ -96,7 +95,7 @@ export class EventsGateway {
       if (!lobby.password || lobby.password === password) {
         LOBBYMAN.lobbies[code].players[player.playerId] = player;
         LOBBYMAN.activePlayers[player.playerId] = code;
-        console.log('Player ' + `${player.playerId}` +  'joined ' + `${code}`);
+        console.log('Player ' + `${player.playerId}` + 'joined ' + `${code}`);
       }
     }
   }
@@ -113,7 +112,7 @@ export class EventsGateway {
     for (const lobby of Object.values(LOBBYMAN.lobbies)) {
       lobbyInfo.push({
         code: lobby.code,
-        numberPlayers: Object.keys(lobby.players).length,
+        playerCount: Object.keys(lobby.players).length,
       });
     }
 

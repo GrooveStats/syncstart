@@ -31,7 +31,7 @@ describe('EventsGateway', () => {
         player: {
           playerId: 'guid-1',
           profileName: 'teejusb',
-        }
+        },
       });
       socket.on('createLobby', (data) => {
         code = data;
