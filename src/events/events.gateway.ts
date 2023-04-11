@@ -23,11 +23,11 @@ function GenerateLobbyCode() {
 function MaybeRemovePlayer(player: Player) {
   if (player.playerId in LOBBYMAN.activePlayers) {
     const code = LOBBYMAN.activePlayers[player.playerId];
-    if (code in LOBBYMAN.lobbies[code]) {
+    if (code in LOBBYMAN.lobbies) {
       const lobby = LOBBYMAN.lobbies[code];
       if (player.playerId in lobby.players) {
         delete lobby.players[player.playerId];
-        console.log('Deleted ' + `${player.playerId}` + 'from ' + `${code}`);
+        console.log('Deleted ' + `${player.playerId}` + ' from ' + `${code}`);
       }
 
       // No players left in this lobby, destroy it.
@@ -37,7 +37,7 @@ function MaybeRemovePlayer(player: Player) {
       }
     }
     delete LOBBYMAN.activePlayers[player.playerId];
-    console.log('Deleted active player' + `${player.playerId}`);
+    console.log('Deleted active player: ' + `${player.playerId}`);
   }
 }
 
@@ -84,15 +84,15 @@ export class EventsGateway {
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
   ) {
-    // A player can only join one lobby at a time.
-    MaybeRemovePlayer(player);
-
     // Does the lobby we're trying to join exist?
     if (code in LOBBYMAN.lobbies) {
       const lobby = LOBBYMAN.lobbies[code];
       // Join either if the lobby is public, or one has provided a valid
       // password for a private lobby.
       if (!lobby.password || lobby.password === password) {
+        // A player can only join one lobby at a time.
+        MaybeRemovePlayer(player);
+
         LOBBYMAN.lobbies[code].players[player.playerId] = player;
         LOBBYMAN.activePlayers[player.playerId] = code;
         console.log('Player ' + `${player.playerId}` + 'joined ' + `${code}`);
@@ -101,7 +101,7 @@ export class EventsGateway {
   }
 
   @SubscribeMessage('leaveLobby')
-  async leabeLobby(@MessageBody('player') player: Player) {
+  async leaveLobby(@MessageBody('player') player: Player) {
     // A player can only join one lobby at a time.
     MaybeRemovePlayer(player);
   }
@@ -115,7 +115,7 @@ export class EventsGateway {
         playerCount: Object.keys(lobby.players).length,
       });
     }
-
+    console.log('Found ' + lobbyInfo.length + ' lobbies');
     return lobbyInfo;
   }
 }
