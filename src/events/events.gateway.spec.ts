@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
 import { io, Socket } from 'socket.io-client';
-import { LOBBYMAN } from '../types/models.types';
+import { LobbyInfo, LOBBYMAN, Player } from '../types/models.types';
 
 describe('EventsGateway', () => {
   let app: INestApplication;
@@ -14,36 +14,43 @@ describe('EventsGateway', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
-    LOBBYMAN.lobbies = {};
-    LOBBYMAN.activePlayers = {};
-    await app.listen(3000);
+    // Run tests on a different port than 3000 (the default for this app).
+    await app.listen(3001);
   });
 
   beforeEach(() => {
-    socket = io('http://localhost:3000');
+    // Clear out data before every test.
+    LOBBYMAN.lobbies = {};
+    LOBBYMAN.activePlayers = {};
+
+    socket = io('http://localhost:3001');
     socket.connect();
   });
 
-  describe('findAll', () => {
-    it('should receive 3 numbers', (done) => {
+  describe('generalLobbyUsage', () => {
+    it('createLobby', (done) => {
+      const player: Player = {
+        playerId: 'guid-1',
+        profileName: 'teejusb',
+      };
+
       let code = '';
-      socket.emit('createLobby', {
-        player: {
-          playerId: 'guid-1',
-          profileName: 'teejusb',
-        },
-      });
-      socket.on('createLobby', (data) => {
+      socket.emit('createLobby', { player: player }, (data: string) => {
         code = data;
-        expect(code).toEqual(4);
+        expect(code.length).toEqual(4);
       });
-      socket.emit('searchLobby');
-      socket.on('searchLobby', (data) => {
+      socket.emit('searchLobby', (data: LobbyInfo[]) => {
         expect(data.length).toEqual(1);
         expect(data[0].code).toEqual(code);
-        expect(data[0].numberPlayers).toEqual(1);
+        expect(data[0].playerCount).toEqual(1);
       });
-      done();
+      socket.emit('leaveLobby', { player: player }, () => {
+        expect(Object.keys(LOBBYMAN.activePlayers).length).toEqual(0);
+      });
+      socket.emit('searchLobby', (data: LobbyInfo[]) => {
+        expect(data.length).toEqual(0);
+        done();
+      });
     });
   });
 
