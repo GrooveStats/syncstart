@@ -1,11 +1,12 @@
 import {
+  ConnectedSocket,
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
-import { LOBBYMAN, LobbyInfo, Player } from '../types/models.types';
+import { Server, Socket } from 'socket.io';
+import { LOBBYMAN, LobbyInfo, Player, Spectator } from '../types/models.types';
 
 function GenerateLobbyCode() {
   const lobbyCodeLength = 4;
@@ -52,8 +53,9 @@ export class EventsGateway {
 
   @SubscribeMessage('createLobby')
   async createLobby(
+    @ConnectedSocket() client: Socket,
     @MessageBody('player') player: Player,
-    @MessageBody('password') password?: string,
+    @MessageBody('password') password: string,
   ): Promise<string> {
     // A player can only join one lobby at a time.
     MaybeRemovePlayer(player);
@@ -69,9 +71,10 @@ export class EventsGateway {
       players: {
         [player.playerId]: player,
       },
+      connectedSocketIds: new Set([client.id]),
       spectators: [],
     };
-
+    client.join(code);
     LOBBYMAN.activePlayers[player.playerId] = code;
     console.log('Created lobby ' + code);
 
@@ -80,6 +83,7 @@ export class EventsGateway {
 
   @SubscribeMessage('joinLobby')
   async joinLobby(
+    @ConnectedSocket() client: Socket,
     @MessageBody('player') player: Player,
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
@@ -93,7 +97,15 @@ export class EventsGateway {
         // A player can only join one lobby at a time.
         MaybeRemovePlayer(player);
 
-        LOBBYMAN.lobbies[code].players[player.playerId] = player;
+        // If this isn't a connection from a different client, don't try to
+        // rejoin as we're already connected to the lobby. This happens in the
+        // case when two players join from the same machine.
+        if (!(client.id in lobby.connectedSocketIds)) {
+          client.join(code);
+          lobby.connectedSocketIds.add(client.id);
+        }
+
+        lobby.players[player.playerId] = player;
         LOBBYMAN.activePlayers[player.playerId] = code;
         console.log('Player ' + `${player.playerId}` + 'joined ' + `${code}`);
       }
@@ -106,12 +118,37 @@ export class EventsGateway {
     MaybeRemovePlayer(player);
   }
 
+  @SubscribeMessage('spectateLobby')
+  async spectateLobby(
+    @ConnectedSocket() client: Socket,
+    @MessageBody('spectator') spectator: Spectator,
+    @MessageBody('code') code: string,
+    @MessageBody('password') password: string,
+  ) {
+    // Does the lobby we're trying to join exist?
+    if (code in LOBBYMAN.lobbies) {
+      const lobby = LOBBYMAN.lobbies[code];
+      // Join either if the lobby is public, or one has provided a valid
+      // password for a private lobby.
+      if (!lobby.password || lobby.password === password) {
+        // If this isn't a connection from a different client, don't try to
+        // rejoin as we're already connected to the lobby. This happens in the
+        // case when two players join from the same machine.
+        if (!(client.id in lobby.connectedSocketIds)) {
+          client.join(code);
+          lobby.spectators.push(spectator);
+        }
+      }
+    }
+  }
+
   @SubscribeMessage('searchLobby')
   async searchLobby(): Promise<LobbyInfo[]> {
     const lobbyInfo: LobbyInfo[] = [];
     for (const lobby of Object.values(LOBBYMAN.lobbies)) {
       lobbyInfo.push({
         code: lobby.code,
+        isPasswordProtected: lobby.password.length !== 0,
         playerCount: Object.keys(lobby.players).length,
       });
     }
