@@ -56,7 +56,6 @@ export class Player {
 }
 
 export class Machine {
-  machineId: string;
   player1?: Player;
   player2?: Player;
   socket?: Socket;
@@ -67,7 +66,7 @@ export class Lobby {
   // Empty string here is equivalent to "no password". We could use undefined
   // but we can consider them the same.
   password: string;
-  machines: Record<string, Machine>;
+  machines: Record<SocketId, Machine>;
   spectators: Record<SocketId, Spectator>;
 
   songInfo?: SongInfo;
@@ -84,10 +83,7 @@ export class LOBBYMAN {
   // Mapping from lobby code to a Lobby
   static lobbies: Record<string, Lobby>;
 
-  // Mapping from machine id to the lobby code of the lobby it's connected to.
-  static activeMachines: Record<string, string>;
-
-  // Mapping from socketId to the machineId.
+  // Mapping from socketId to the lobby code of the lobby it's connected to.
   static machineConnections: Record<SocketId, string>;
 
   // Mapping from socketId to the lobby code for the spectators.

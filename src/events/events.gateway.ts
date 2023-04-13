@@ -51,12 +51,12 @@ function GetPlayerCountForLobby(lobby: Lobby): number {
   return playerCount;
 }
 
-function DisconnectMachine(machineId: string): boolean {
-  const code = LOBBYMAN.activeMachines[machineId];
+function DisconnectMachine(socketId: SocketId): boolean {
+  const code = LOBBYMAN.machineConnections[socketId];
   if (code) {
     const lobby = LOBBYMAN.lobbies[code];
     if (lobby) {
-      const machine = lobby.machines[machineId];
+      const machine = lobby.machines[socketId];
       if (machine) {
         if (machine.socket) {
           if (machine.socket.id in LOBBYMAN.machineConnections) {
@@ -66,8 +66,8 @@ function DisconnectMachine(machineId: string): boolean {
           machine.socket.leave(code);
           // Don't disconnect here, as we have a callback.
         }
-        delete lobby.machines[machineId];
-        delete LOBBYMAN.activeMachines[machineId];
+        delete lobby.machines[socketId];
+        delete LOBBYMAN.machineConnections[socketId];
 
         if (GetPlayerCountForLobby(lobby) === 0) {
           for (const spectator of Object.values(lobby.spectators)) {
@@ -126,9 +126,9 @@ export class EventsGateway {
       DisconnectSpectator(client.id);
     }
 
-    if (machine.machineId in LOBBYMAN.activeMachines) {
+    if (client.id in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      DisconnectMachine(machine.machineId);
+      DisconnectMachine(client.id);
     }
 
     let code = GenerateLobbyCode();
@@ -140,7 +140,7 @@ export class EventsGateway {
       code: code,
       password: password ? password : '',
       machines: {
-        [machine.machineId]: {
+        [client.id]: {
           ...machine,
           socket: client,
         },
@@ -148,8 +148,7 @@ export class EventsGateway {
       spectators: {},
     };
     client.join(code);
-    LOBBYMAN.activeMachines[machine.machineId] = code;
-    LOBBYMAN.machineConnections[client.id] = machine.machineId;
+    LOBBYMAN.machineConnections[client.id] = code;
     console.log('Created lobby ' + code);
 
     return code;
@@ -167,27 +166,24 @@ export class EventsGateway {
         DisconnectSpectator(client.id);
       }
 
-      if (machine.machineId in LOBBYMAN.activeMachines) {
+      if (client.id in LOBBYMAN.machineConnections) {
         // A machine can only join one lobby at a time.
-        DisconnectMachine(machine.machineId);
+        DisconnectMachine(client.id);
       }
 
       const lobby = LOBBYMAN.lobbies[code];
-      lobby.machines[machine.machineId] = {
+      lobby.machines[client.id] = {
         ...machine,
         socket: client,
       };
-      LOBBYMAN.activeMachines[machine.machineId] = code;
-      LOBBYMAN.machineConnections[client.id] = machine.machineId;
-      console.log('Machine ' + `${machine.machineId}` + 'joined ' + `${code}`);
+      LOBBYMAN.machineConnections[client.id] = code;
+      console.log('Machine ' + `${client.id}` + 'joined ' + `${code}`);
     }
   }
 
   @SubscribeMessage('leaveLobby')
-  async leaveLobby(
-    @MessageBody('machineId') machineId: string,
-  ): Promise<boolean> {
-    return DisconnectMachine(machineId);
+  async leaveLobby(@ConnectedSocket() client: Socket): Promise<boolean> {
+    return DisconnectMachine(client.id);
   }
 
   @SubscribeMessage('spectateLobby')
@@ -203,10 +199,10 @@ export class EventsGateway {
         !(client.id in LOBBYMAN.machineConnections) &&
         CanJoinLobby(code, password)
       ) {
-        // if (client.id in LOBBYMAN.spectatorConnections) {
-        //   // A spectator can only spectate one lobby at a time.
-        //   DisconnectSpectator(client.id);
-        // }
+        if (client.id in LOBBYMAN.spectatorConnections) {
+          // A spectator can only spectate one lobby at a time.
+          DisconnectSpectator(client.id);
+        }
 
         lobby.spectators[client.id] = {
           ...spectator,
