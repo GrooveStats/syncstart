@@ -6,6 +6,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { SocketId } from 'socket.io-adapter';
 import {
   LOBBYMAN,
   Lobby,
@@ -69,14 +70,36 @@ function DisconnectMachine(machineId: string): boolean {
         delete LOBBYMAN.activeMachines[machineId];
 
         if (GetPlayerCountForLobby(lobby) === 0) {
-          for (const spectator of lobby.spectators) {
+          for (const spectator of Object.values(lobby.spectators)) {
             if (spectator.socket) {
               spectator.socket.leave(code);
               spectator.socket.disconnect();
+              delete LOBBYMAN.spectatorConnections[spectator.socket.id];
             }
           }
           delete LOBBYMAN.lobbies[code];
         }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Disconnect and remove a spectator from a lobby.
+function DisconnectSpectator(socketId: SocketId): boolean {
+  const code = LOBBYMAN.spectatorConnections[socketId];
+  if (code) {
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby) {
+      const spectator = lobby.spectators[socketId];
+      if (spectator) {
+        if (spectator.socket) {
+          spectator.socket.leave(code);
+          // Don't disconnect here, as we may be re-using the connection.
+        }
+        delete lobby.spectators[socketId];
+        delete LOBBYMAN.spectatorConnections[socketId];
         return true;
       }
     }
@@ -99,6 +122,10 @@ export class EventsGateway {
     @MessageBody('machine') machine: Machine,
     @MessageBody('password') password: string,
   ): Promise<string> {
+    if (client.id in LOBBYMAN.spectatorConnections) {
+      DisconnectSpectator(client.id);
+    }
+
     if (machine.machineId in LOBBYMAN.activeMachines) {
       // A machine can only join one lobby at a time.
       DisconnectMachine(machine.machineId);
@@ -118,7 +145,7 @@ export class EventsGateway {
           socket: client,
         },
       },
-      spectators: [],
+      spectators: {},
     };
     client.join(code);
     LOBBYMAN.activeMachines[machine.machineId] = code;
@@ -136,12 +163,16 @@ export class EventsGateway {
     @MessageBody('password') password: string,
   ): Promise<void> {
     if (CanJoinLobby(code, password)) {
-      const lobby = LOBBYMAN.lobbies[code];
+      if (client.id in LOBBYMAN.spectatorConnections) {
+        DisconnectSpectator(client.id);
+      }
+
       if (machine.machineId in LOBBYMAN.activeMachines) {
         // A machine can only join one lobby at a time.
         DisconnectMachine(machine.machineId);
       }
 
+      const lobby = LOBBYMAN.lobbies[code];
       lobby.machines[machine.machineId] = {
         ...machine,
         socket: client,
@@ -172,11 +203,17 @@ export class EventsGateway {
         !(client.id in LOBBYMAN.machineConnections) &&
         CanJoinLobby(code, password)
       ) {
-        lobby.spectators.push({
+        // if (client.id in LOBBYMAN.spectatorConnections) {
+        //   // A spectator can only spectate one lobby at a time.
+        //   DisconnectSpectator(client.id);
+        // }
+
+        lobby.spectators[client.id] = {
           ...spectator,
           socket: client,
-        });
+        };
         client.join(code);
+        LOBBYMAN.spectatorConnections[client.id] = code;
       }
       return Object.keys(lobby.spectators).length;
     }

@@ -68,7 +68,7 @@ export class Lobby {
   // but we can consider them the same.
   password: string;
   machines: Record<string, Machine>;
-  spectators: Spectator[];
+  spectators: Record<SocketId, Spectator>;
 
   songInfo?: SongInfo;
 }
@@ -84,9 +84,12 @@ export class LOBBYMAN {
   // Mapping from lobby code to a Lobby
   static lobbies: Record<string, Lobby>;
 
-  // Mapping from machine to the lobby code of the lobby it's connected to.
+  // Mapping from machine id to the lobby code of the lobby it's connected to.
   static activeMachines: Record<string, string>;
 
   // Mapping from socketId to the machineId.
   static machineConnections: Record<SocketId, string>;
+
+  // Mapping from socketId to the lobby code for the spectators.
+  static spectatorConnections: Record<SocketId, string>;
 }
