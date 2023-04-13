@@ -64,7 +64,8 @@ function DisconnectMachine(socketId: SocketId): boolean {
           }
 
           machine.socket.leave(code);
-          // Don't disconnect here, as we have a callback.
+          // Don't disconnect here, as we may be re-using the connection.
+          // In the case of `leaveLobby`, the client can manually disconnect.
         }
         delete lobby.machines[socketId];
         delete LOBBYMAN.machineConnections[socketId];
@@ -73,6 +74,8 @@ function DisconnectMachine(socketId: SocketId): boolean {
           for (const spectator of Object.values(lobby.spectators)) {
             if (spectator.socket) {
               spectator.socket.leave(code);
+              // Force a disconnect. If there are no more players in the lobby,
+              // we should remove the spectators as well.
               spectator.socket.disconnect();
               delete LOBBYMAN.spectatorConnections[spectator.socket.id];
             }
@@ -86,7 +89,6 @@ function DisconnectMachine(socketId: SocketId): boolean {
   return false;
 }
 
-// Disconnect and remove a spectator from a lobby.
 function DisconnectSpectator(socketId: SocketId): boolean {
   const code = LOBBYMAN.spectatorConnections[socketId];
   if (code) {
