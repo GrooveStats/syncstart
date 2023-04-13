@@ -21,7 +21,6 @@ describe('EventsGateway', () => {
   beforeEach(() => {
     // Clear out data before every test.
     LOBBYMAN.lobbies = {};
-    LOBBYMAN.activeMachines = {};
     LOBBYMAN.machineConnections = {};
     LOBBYMAN.spectatorConnections = {};
 
@@ -34,7 +33,7 @@ describe('EventsGateway', () => {
       const code = await new Promise<string>((resolve) => {
         socket.emit(
           'createLobby',
-          { machine: { machineId: '1', player1: { playerName: 'teejusb' } } },
+          { machine: { player1: { playerName: 'teejusb' } } },
           (data: string) => {
             expect(data.length).toEqual(4);
             resolve(data);
@@ -90,8 +89,7 @@ describe('EventsGateway', () => {
       });
 
       await new Promise((resolve) => {
-        socket.emit('leaveLobby', { machineId: '1' }, (didLeave: boolean) => {
-          console.log('in callback');
+        socket.emit('leaveLobby', {}, (didLeave: boolean) => {
           expect(didLeave).toEqual(true);
           resolve(undefined);
         });
