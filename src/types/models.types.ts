@@ -1,3 +1,4 @@
+import { Socket } from 'socket.io';
 import { SocketId } from 'socket.io-adapter';
 
 export class Judgments {
@@ -17,18 +18,9 @@ export class Judgments {
   totalRolls: number;
 }
 
-export class Player {
-  playerId: string;
-  profileName: string;
-
-  // Provided by each player.
-  judgments?: Judgments;
-  score?: number;
-  exScore?: number;
-}
-
 export class Spectator {
-  profileName?: string;
+  profileName: string;
+  socket?: Socket;
 }
 
 export class SongInfo {
@@ -44,7 +36,7 @@ export class SongInfo {
   // sufficient in that case. Additionally, StepMania doesn't currently have a
   // way to jump to a specific song based only on it's chart (as there may be
   // conflicts). As a result, players that split up/rename the pack will not be
-  // able easily play with players that don't as the songPaths will be
+  // able easily play with players that don't, as the songPaths will be
   // different.
   songPath: string;
   title: string;
@@ -53,29 +45,48 @@ export class SongInfo {
   songLength: number;
 }
 
+export class Player {
+  playerId: string;
+  profileName: string;
+
+  // Provided by each player.
+  judgments?: Judgments;
+  score?: number;
+  exScore?: number;
+}
+
+export class Machine {
+  machineId: string;
+  player1?: Player;
+  player2?: Player;
+  socket?: Socket;
+}
+
 export class Lobby {
   code: string;
-  // Empty string here is equivalent to "no password".
+  // Empty string here is equivalent to "no password". We could use undefined
+  // but we can consider them the same.
   password: string;
-  players: Record<string, Player>;
+  machines: Record<string, Machine>;
   spectators: Spectator[];
 
   songInfo?: SongInfo;
-
-  // All connected socketIds. This will include all the socketIds for both
-  // players and spectators. Note that more than one player may be connected for
-  // each client.
-  connectedSocketIds: Set<SocketId>;
 }
 
 export class LobbyInfo {
   code: string;
   isPasswordProtected: boolean;
   playerCount: number;
+  spectatorCount: number;
 }
 
 export class LOBBYMAN {
+  // Mapping from lobby code to a Lobby
   static lobbies: Record<string, Lobby>;
-  // Mapping from playerId to the lobby code they're in.
-  static activePlayers: Record<string, string>;
+
+  // Mapping from machine to the lobby code of the lobby it's connected to.
+  static activeMachines: Record<string, string>;
+
+  // Mapping from socketId to the machineId.
+  static machineConnections: Record<SocketId, string>;
 }

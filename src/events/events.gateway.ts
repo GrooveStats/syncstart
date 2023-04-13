@@ -6,9 +6,28 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { LOBBYMAN, LobbyInfo, Player, Spectator } from '../types/models.types';
+import {
+  LOBBYMAN,
+  Lobby,
+  LobbyInfo,
+  Machine,
+  Spectator,
+} from '../types/models.types';
 
-function GenerateLobbyCode() {
+function CanJoinLobby(code: string, password: string) {
+  // Does the lobby we're trying to join exist?
+  if (code in LOBBYMAN.lobbies) {
+    const lobby = LOBBYMAN.lobbies[code];
+    // Join either if the lobby is public, or one has provided a valid
+    // password for a private lobby.
+    if (!lobby.password || lobby.password === password) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function GenerateLobbyCode(): string {
   const lobbyCodeLength = 4;
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let result = '';
@@ -18,28 +37,51 @@ function GenerateLobbyCode() {
   return result;
 }
 
-// Removes the player from the list of lobbies and the activePlayers list, if
-// applicable.
-// Destroys the lobby if all players are removed.
-function MaybeRemovePlayer(player: Player) {
-  if (player.playerId in LOBBYMAN.activePlayers) {
-    const code = LOBBYMAN.activePlayers[player.playerId];
-    if (code in LOBBYMAN.lobbies) {
-      const lobby = LOBBYMAN.lobbies[code];
-      if (player.playerId in lobby.players) {
-        delete lobby.players[player.playerId];
-        console.log('Deleted ' + `${player.playerId}` + ' from ' + `${code}`);
-      }
+function GetPlayerCountForLobby(lobby: Lobby): number {
+  let playerCount = 0;
+  for (const machine of Object.values(lobby.machines)) {
+    if (machine.player1 !== undefined) {
+      playerCount += 1;
+    }
+    if (machine.player2 !== undefined) {
+      playerCount += 1;
+    }
+  }
+  return playerCount;
+}
 
-      // No players left in this lobby, destroy it.
-      if (Object.keys(lobby.players).length === 0) {
-        delete LOBBYMAN.lobbies[code];
-        console.log('Deleted lobby ' + `${code}`);
+function DisconnectMachine(machineId: string): boolean {
+  const code = LOBBYMAN.activeMachines[machineId];
+  if (code) {
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby) {
+      const machine = lobby.machines[machineId];
+      if (machine) {
+        if (machine.socket) {
+          if (machine.socket.id in LOBBYMAN.machineConnections) {
+            delete LOBBYMAN.machineConnections[machine.socket.id];
+          }
+
+          machine.socket.leave(code);
+          // Don't disconnect here, as we have a callback.
+        }
+        delete lobby.machines[machineId];
+        delete LOBBYMAN.activeMachines[machineId];
+
+        if (GetPlayerCountForLobby(lobby) === 0) {
+          for (const spectator of lobby.spectators) {
+            if (spectator.socket) {
+              spectator.socket.leave(code);
+              spectator.socket.disconnect();
+            }
+          }
+          delete LOBBYMAN.lobbies[code];
+        }
+        return true;
       }
     }
-    delete LOBBYMAN.activePlayers[player.playerId];
-    console.log('Deleted active player: ' + `${player.playerId}`);
   }
+  return false;
 }
 
 @WebSocketGateway({
@@ -49,16 +91,18 @@ function MaybeRemovePlayer(player: Player) {
 })
 export class EventsGateway {
   @WebSocketServer()
-  server!: Server;
+  server: Server;
 
   @SubscribeMessage('createLobby')
   async createLobby(
     @ConnectedSocket() client: Socket,
-    @MessageBody('player') player: Player,
+    @MessageBody('machine') machine: Machine,
     @MessageBody('password') password: string,
   ): Promise<string> {
-    // A player can only join one lobby at a time.
-    MaybeRemovePlayer(player);
+    if (machine.machineId in LOBBYMAN.activeMachines) {
+      // A machine can only join one lobby at a time.
+      DisconnectMachine(machine.machineId);
+    }
 
     let code = GenerateLobbyCode();
     while (code in LOBBYMAN.lobbies) {
@@ -68,14 +112,17 @@ export class EventsGateway {
     LOBBYMAN.lobbies[code] = {
       code: code,
       password: password ? password : '',
-      players: {
-        [player.playerId]: player,
+      machines: {
+        [machine.machineId]: {
+          ...machine,
+          socket: client,
+        },
       },
-      connectedSocketIds: new Set([client.id]),
       spectators: [],
     };
     client.join(code);
-    LOBBYMAN.activePlayers[player.playerId] = code;
+    LOBBYMAN.activeMachines[machine.machineId] = code;
+    LOBBYMAN.machineConnections[client.id] = machine.machineId;
     console.log('Created lobby ' + code);
 
     return code;
@@ -84,38 +131,32 @@ export class EventsGateway {
   @SubscribeMessage('joinLobby')
   async joinLobby(
     @ConnectedSocket() client: Socket,
-    @MessageBody('player') player: Player,
+    @MessageBody('machine') machine: Machine,
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
-  ) {
-    // Does the lobby we're trying to join exist?
-    if (code in LOBBYMAN.lobbies) {
+  ): Promise<void> {
+    if (CanJoinLobby(code, password)) {
       const lobby = LOBBYMAN.lobbies[code];
-      // Join either if the lobby is public, or one has provided a valid
-      // password for a private lobby.
-      if (!lobby.password || lobby.password === password) {
-        // A player can only join one lobby at a time.
-        MaybeRemovePlayer(player);
-
-        // If this isn't a connection from a different client, don't try to
-        // rejoin as we're already connected to the lobby. This happens in the
-        // case when two players join from the same machine.
-        if (!(client.id in lobby.connectedSocketIds)) {
-          client.join(code);
-          lobby.connectedSocketIds.add(client.id);
-        }
-
-        lobby.players[player.playerId] = player;
-        LOBBYMAN.activePlayers[player.playerId] = code;
-        console.log('Player ' + `${player.playerId}` + 'joined ' + `${code}`);
+      if (machine.machineId in LOBBYMAN.activeMachines) {
+        // A machine can only join one lobby at a time.
+        DisconnectMachine(machine.machineId);
       }
+
+      lobby.machines[machine.machineId] = {
+        ...machine,
+        socket: client,
+      };
+      LOBBYMAN.activeMachines[machine.machineId] = code;
+      LOBBYMAN.machineConnections[client.id] = machine.machineId;
+      console.log('Machine ' + `${machine.machineId}` + 'joined ' + `${code}`);
     }
   }
 
   @SubscribeMessage('leaveLobby')
-  async leaveLobby(@MessageBody('player') player: Player) {
-    // A player can only join one lobby at a time.
-    MaybeRemovePlayer(player);
+  async leaveLobby(
+    @MessageBody('machineId') machineId: string,
+  ): Promise<boolean> {
+    return DisconnectMachine(machineId);
   }
 
   @SubscribeMessage('spectateLobby')
@@ -124,22 +165,22 @@ export class EventsGateway {
     @MessageBody('spectator') spectator: Spectator,
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
-  ) {
-    // Does the lobby we're trying to join exist?
-    if (code in LOBBYMAN.lobbies) {
-      const lobby = LOBBYMAN.lobbies[code];
-      // Join either if the lobby is public, or one has provided a valid
-      // password for a private lobby.
-      if (!lobby.password || lobby.password === password) {
-        // If this isn't a connection from a different client, don't try to
-        // rejoin as we're already connected to the lobby. This happens in the
-        // case when two players join from the same machine.
-        if (!(client.id in lobby.connectedSocketIds)) {
-          client.join(code);
-          lobby.spectators.push(spectator);
-        }
+  ): Promise<number> {
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby) {
+      if (
+        !(client.id in LOBBYMAN.machineConnections) &&
+        CanJoinLobby(code, password)
+      ) {
+        lobby.spectators.push({
+          ...spectator,
+          socket: client,
+        });
+        client.join(code);
       }
+      return Object.keys(lobby.spectators).length;
     }
+    return 0;
   }
 
   @SubscribeMessage('searchLobby')
@@ -149,7 +190,8 @@ export class EventsGateway {
       lobbyInfo.push({
         code: lobby.code,
         isPasswordProtected: lobby.password.length !== 0,
-        playerCount: Object.keys(lobby.players).length,
+        playerCount: GetPlayerCountForLobby(lobby),
+        spectatorCount: Object.keys(lobby.spectators).length,
       });
     }
     console.log('Found ' + lobbyInfo.length + ' lobbies');

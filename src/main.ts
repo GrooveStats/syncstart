@@ -6,7 +6,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   LOBBYMAN.lobbies = {};
-  LOBBYMAN.activePlayers = {};
+  LOBBYMAN.activeMachines = {};
+  LOBBYMAN.machineConnections = {};
 
   await app.listen(3000);
 }
