@@ -49,7 +49,6 @@ export class Player {
   playerId: string;
   profileName: string;
 
-  // Provided by each player.
   judgments?: Judgments;
   score?: number;
   exScore?: number;
