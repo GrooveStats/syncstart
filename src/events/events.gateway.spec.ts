@@ -23,6 +23,7 @@ describe('EventsGateway', () => {
     LOBBYMAN.lobbies = {};
     LOBBYMAN.activeMachines = {};
     LOBBYMAN.machineConnections = {};
+    LOBBYMAN.spectatorConnections = {};
 
     socket = io('http://localhost:3001');
     socket.connect();

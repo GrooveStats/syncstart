@@ -8,6 +8,7 @@ async function bootstrap() {
   LOBBYMAN.lobbies = {};
   LOBBYMAN.activeMachines = {};
   LOBBYMAN.machineConnections = {};
+  LOBBYMAN.spectatorConnections = {};
 
   await app.listen(3000);
 }
