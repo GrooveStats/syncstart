@@ -6,108 +6,14 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { SocketId } from 'socket.io-adapter';
+import { LOBBYMAN, LobbyInfo, Machine, Spectator } from '../types/models.types';
 import {
-  LOBBYMAN,
-  Lobby,
-  LobbyInfo,
-  Machine,
-  Spectator,
-} from '../types/models.types';
-
-function CanJoinLobby(code: string, password: string) {
-  // Does the lobby we're trying to join exist?
-  if (code in LOBBYMAN.lobbies) {
-    const lobby = LOBBYMAN.lobbies[code];
-    // Join either if the lobby is public, or one has provided a valid
-    // password for a private lobby.
-    if (!lobby.password || lobby.password === password) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function GenerateLobbyCode(): string {
-  const lobbyCodeLength = 4;
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let result = '';
-  for (let i = 0; i < lobbyCodeLength; ++i) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return result;
-}
-
-function GetPlayerCountForLobby(lobby: Lobby): number {
-  let playerCount = 0;
-  for (const machine of Object.values(lobby.machines)) {
-    if (machine.player1 !== undefined) {
-      playerCount += 1;
-    }
-    if (machine.player2 !== undefined) {
-      playerCount += 1;
-    }
-  }
-  return playerCount;
-}
-
-function DisconnectMachine(socketId: SocketId): boolean {
-  const code = LOBBYMAN.machineConnections[socketId];
-  if (code) {
-    const lobby = LOBBYMAN.lobbies[code];
-    if (lobby) {
-      const machine = lobby.machines[socketId];
-      if (machine) {
-        if (machine.socket) {
-          if (machine.socket.id in LOBBYMAN.machineConnections) {
-            delete LOBBYMAN.machineConnections[machine.socket.id];
-          }
-
-          machine.socket.leave(code);
-          // Don't disconnect here, as we may be re-using the connection.
-          // In the case of `leaveLobby`, the client can manually disconnect.
-        }
-        delete lobby.machines[socketId];
-        delete LOBBYMAN.machineConnections[socketId];
-
-        if (GetPlayerCountForLobby(lobby) === 0) {
-          for (const spectator of Object.values(lobby.spectators)) {
-            if (spectator.socket) {
-              spectator.socket.leave(code);
-              // Force a disconnect. If there are no more players in the lobby,
-              // we should remove the spectators as well.
-              spectator.socket.disconnect();
-              delete LOBBYMAN.spectatorConnections[spectator.socket.id];
-            }
-          }
-          delete LOBBYMAN.lobbies[code];
-        }
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function DisconnectSpectator(socketId: SocketId): boolean {
-  const code = LOBBYMAN.spectatorConnections[socketId];
-  if (code) {
-    const lobby = LOBBYMAN.lobbies[code];
-    if (lobby) {
-      const spectator = lobby.spectators[socketId];
-      if (spectator) {
-        if (spectator.socket) {
-          spectator.socket.leave(code);
-          // Don't disconnect here, as we may be re-using the connection.
-        }
-        delete lobby.spectators[socketId];
-        delete LOBBYMAN.spectatorConnections[socketId];
-        return true;
-      }
-    }
-  }
-  return false;
-}
+  DisconnectMachine,
+  DisconnectSpectator,
+  CanJoinLobby,
+  GenerateLobbyCode,
+  GetPlayerCountForLobby,
+} from './utils';
 
 @WebSocketGateway({
   cors: {
@@ -118,6 +24,27 @@ export class EventsGateway {
   @WebSocketServer()
   server: Server;
 
+  /**
+   * Cleans up the lobby manager when a client disconnects.
+   * @param client, The socket that disconnected.
+   */
+  handleDisconnect(client: Socket) {
+    if (client.id in LOBBYMAN.machineConnections) {
+      DisconnectMachine(client.id);
+    }
+
+    if (client.id in LOBBYMAN.spectatorConnections) {
+      DisconnectSpectator(client.id);
+    }
+  }
+
+  /**
+   * Creates a new lobby and connects a machine to it.
+   * @param client, The socket that connected.
+   * @param machine, The machine that connected.
+   * @param password, The password for the lobby (empty implies public lobby).
+   * @returns, The code for the newly created lobby.
+   */
   @SubscribeMessage('createLobby')
   async createLobby(
     @ConnectedSocket() client: Socket,
@@ -156,13 +83,21 @@ export class EventsGateway {
     return code;
   }
 
+  /**
+   * Connects a machine to an existing lobby.
+   * @param client, The socket that connected.
+   * @param machine, The machine that connected.
+   * @param code, The code for the lobby to join.
+   * @param password, The password for the lobby.
+   * @returns True if the machine joined the lobby, false otherwise.
+   */
   @SubscribeMessage('joinLobby')
   async joinLobby(
     @ConnectedSocket() client: Socket,
     @MessageBody('machine') machine: Machine,
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (CanJoinLobby(code, password)) {
       if (client.id in LOBBYMAN.spectatorConnections) {
         DisconnectSpectator(client.id);
@@ -180,14 +115,29 @@ export class EventsGateway {
       };
       LOBBYMAN.machineConnections[client.id] = code;
       console.log('Machine ' + `${client.id}` + 'joined ' + `${code}`);
+      return true;
     }
+    return false;
   }
 
+  /**
+   * Removes a machine from a lobby.
+   * @param client, The socket connection of the machine to disconnect.
+   * @returns, True if the machine was disconnected successfully.
+   */
   @SubscribeMessage('leaveLobby')
   async leaveLobby(@ConnectedSocket() client: Socket): Promise<boolean> {
     return DisconnectMachine(client.id);
   }
 
+  /**
+   * Connects a spectator to an existing lobby.
+   * @param client, The socket that connected.
+   * @param spectator, The spectator to connect to a lobby.
+   * @param code, The code for the lobby to spectate.
+   * @param password, The password for the lobby.
+   * @returns, The number of spectators in the lobby.
+   */
   @SubscribeMessage('spectateLobby')
   async spectateLobby(
     @ConnectedSocket() client: Socket,
@@ -218,6 +168,10 @@ export class EventsGateway {
     return 0;
   }
 
+  /**
+   * Searches for all active lobbies.
+   * @returns, The list of lobbies that are currently active.
+   */
   @SubscribeMessage('searchLobby')
   async searchLobby(): Promise<LobbyInfo[]> {
     const lobbyInfo: LobbyInfo[] = [];
