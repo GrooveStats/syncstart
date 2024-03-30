@@ -8,11 +8,12 @@ import {
 import { Server, Socket } from 'socket.io';
 import { LOBBYMAN, LobbyInfo, Machine, Spectator } from '../types/models.types';
 import {
-  DisconnectMachine,
-  DisconnectSpectator,
-  CanJoinLobby,
-  GenerateLobbyCode,
-  GetPlayerCountForLobby,
+  disconnectMachine,
+  disconnectSpectator,
+  canJoinLobby,
+  generateLobbyCode,
+  getPlayerCountForLobby,
+  getLobbyForMachine,
 } from './utils';
 
 @WebSocketGateway({
@@ -30,11 +31,11 @@ export class EventsGateway {
    */
   handleDisconnect(client: Socket) {
     if (client.id in LOBBYMAN.machineConnections) {
-      DisconnectMachine(client.id);
+      disconnectMachine(client.id);
     }
 
     if (client.id in LOBBYMAN.spectatorConnections) {
-      DisconnectSpectator(client.id);
+      disconnectSpectator(client.id);
     }
   }
 
@@ -52,17 +53,17 @@ export class EventsGateway {
     @MessageBody('password') password: string,
   ): Promise<string> {
     if (client.id in LOBBYMAN.spectatorConnections) {
-      DisconnectSpectator(client.id);
+      disconnectSpectator(client.id);
     }
 
     if (client.id in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      DisconnectMachine(client.id);
+      disconnectMachine(client.id);
     }
 
-    let code = GenerateLobbyCode();
+    let code = generateLobbyCode();
     while (code in LOBBYMAN.lobbies) {
-      code = GenerateLobbyCode();
+      code = generateLobbyCode();
     }
 
     LOBBYMAN.lobbies[code] = {
@@ -72,6 +73,7 @@ export class EventsGateway {
         [client.id]: {
           ...machine,
           socket: client,
+          ready: false,
         },
       },
       spectators: {},
@@ -98,20 +100,21 @@ export class EventsGateway {
     @MessageBody('code') code: string,
     @MessageBody('password') password: string,
   ): Promise<boolean> {
-    if (CanJoinLobby(code, password)) {
+    if (canJoinLobby(code, password)) {
       if (client.id in LOBBYMAN.spectatorConnections) {
-        DisconnectSpectator(client.id);
+        disconnectSpectator(client.id);
       }
 
       if (client.id in LOBBYMAN.machineConnections) {
         // A machine can only join one lobby at a time.
-        DisconnectMachine(client.id);
+        disconnectMachine(client.id);
       }
 
       const lobby = LOBBYMAN.lobbies[code];
       lobby.machines[client.id] = {
         ...machine,
         socket: client,
+        ready: false,
       };
       LOBBYMAN.machineConnections[client.id] = code;
       console.log('Machine ' + `${client.id}` + 'joined ' + `${code}`);
@@ -127,7 +130,7 @@ export class EventsGateway {
    */
   @SubscribeMessage('leaveLobby')
   async leaveLobby(@ConnectedSocket() client: Socket): Promise<boolean> {
-    return DisconnectMachine(client.id);
+    return disconnectMachine(client.id);
   }
 
   /**
@@ -149,11 +152,11 @@ export class EventsGateway {
     if (lobby) {
       if (
         !(client.id in LOBBYMAN.machineConnections) &&
-        CanJoinLobby(code, password)
+        canJoinLobby(code, password)
       ) {
         if (client.id in LOBBYMAN.spectatorConnections) {
           // A spectator can only spectate one lobby at a time.
-          DisconnectSpectator(client.id);
+          disconnectSpectator(client.id);
         }
 
         lobby.spectators[client.id] = {
@@ -179,11 +182,53 @@ export class EventsGateway {
       lobbyInfo.push({
         code: lobby.code,
         isPasswordProtected: lobby.password.length !== 0,
-        playerCount: GetPlayerCountForLobby(lobby),
+        playerCount: getPlayerCountForLobby(lobby),
         spectatorCount: Object.keys(lobby.spectators).length,
       });
     }
     console.log('Found ' + lobbyInfo.length + ' lobbies');
     return lobbyInfo;
   }
+
+  /** Updates the ready state of the machine.
+   * @returns, true if we successfully readied up, false otherwise.
+  */
+  @SubscribeMessage('readyUp')
+  async readyUp(
+    @ConnectedSocket client: Socket,
+  ): Promise<boolean> {
+    const lobby = getLobbyForMachine(client.id);
+    if (lobby === undefined) { return false; }
+
+    const machine = lobby.machines[client.id];
+    if (machine === undefined) { return false; }
+    
+    machine.ready = true;
+    return true;
+  }
+  
+  /** Starts the song of the same lobby as the machine
+   */
+  async startSong(@ConnectedSocket client: Socket): Promise<boolean> {
+    const lobby = getLobbyForMachine(client.id);
+    if (lobby === undefined) { return false; }
+
+    let allReady = true;
+    for (const machine of Object.values(lobby.machines)) {
+      if (!machine.ready) {
+        allReady = false;
+        break;
+      }
+    }
+
+    if (allReady) {
+      for (const machine of Object.values(lobby.machines)) {
+        machine.socket.emit('start');
+      }
+
+    }
+    return false;
+  }
+
+
 }

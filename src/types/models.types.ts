@@ -58,6 +58,7 @@ export class Machine {
   player1?: Player;
   player2?: Player;
   socket?: Socket;
+  ready?: boolean;
 }
 
 export class Lobby {
