@@ -195,7 +195,7 @@ export class EventsGateway {
   */
   @SubscribeMessage('readyUp')
   async readyUp(
-    @ConnectedSocket client: Socket,
+    @ConnectedSocket() client: Socket,
   ): Promise<boolean> {
     const lobby = getLobbyForMachine(client.id);
     if (lobby === undefined) { return false; }
@@ -209,7 +209,7 @@ export class EventsGateway {
   
   /** Starts the song of the same lobby as the machine
    */
-  async startSong(@ConnectedSocket client: Socket): Promise<boolean> {
+  async startSong(@ConnectedSocket() client: Socket): Promise<boolean> {
     const lobby = getLobbyForMachine(client.id);
     if (lobby === undefined) { return false; }
 
@@ -223,7 +223,9 @@ export class EventsGateway {
 
     if (allReady) {
       for (const machine of Object.values(lobby.machines)) {
-        machine.socket.emit('start');
+        if (machine.socket !== undefined) {
+          machine.socket.emit('start');
+        }
       }
 
     }
