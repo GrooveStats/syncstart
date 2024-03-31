@@ -18,6 +18,7 @@ export function canJoinLobby(code: string, password: string) {
   if (!lobby.password || lobby.password === password) {
     return true;
   }
+  return false;
 }
 
 /**
