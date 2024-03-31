@@ -14,6 +14,7 @@ import {
   generateLobbyCode,
   getPlayerCountForLobby,
   getLobbyForMachine,
+  getLobbyState,
 } from './utils';
 
 @WebSocketGateway({
@@ -191,27 +192,23 @@ export class EventsGateway {
   }
 
   /** Updates the ready state of the machine.
+   * @param client, The socket that connected.
    * @returns, true if we successfully readied up, false otherwise.
-  */
+   */
   @SubscribeMessage('readyUp')
-  async readyUp(
-    @ConnectedSocket() client: Socket,
-  ): Promise<boolean> {
+  async readyUp(@ConnectedSocket() client: Socket): Promise<boolean> {
     const lobby = getLobbyForMachine(client.id);
-    if (lobby === undefined) { return false; }
+    if (lobby === undefined) {
+      return false;
+    }
 
     const machine = lobby.machines[client.id];
-    if (machine === undefined) { return false; }
-    
+    if (machine === undefined) {
+      return false;
+    }
+
     machine.ready = true;
-    return true;
-  }
-  
-  /** Starts the song of the same lobby as the machine
-   */
-  async startSong(@ConnectedSocket() client: Socket): Promise<boolean> {
-    const lobby = getLobbyForMachine(client.id);
-    if (lobby === undefined) { return false; }
+    client.nsp.to(lobby.code).emit('state', getLobbyState(client.id))
 
     let allReady = true;
     for (const machine of Object.values(lobby.machines)) {
@@ -222,15 +219,9 @@ export class EventsGateway {
     }
 
     if (allReady) {
-      for (const machine of Object.values(lobby.machines)) {
-        if (machine.socket !== undefined) {
-          machine.socket.emit('start');
-        }
-      }
-
+      client.nsp.to(lobby.code).emit('startSong');
     }
-    return false;
+    
+    return true;
   }
-
-
 }

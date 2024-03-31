@@ -1,5 +1,5 @@
 import { SocketId } from 'socket.io-adapter';
-import { LOBBYMAN, Lobby } from '../types/models.types';
+import { LOBBYMAN, Lobby, Machine } from '../types/models.types';
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -128,4 +128,21 @@ export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   if (code === undefined) { return undefined };
 
   return LOBBYMAN.lobbies[code];
+}
+
+export function getLobbyState(socketId: SocketId): Machine[] | null {
+  const lobby = getLobbyForMachine(socketId);
+  if (lobby === undefined) {
+    return null;
+  }
+
+  const machineState: Machine[] = [];
+  for (const machine of Object.values(lobby.machines)) {
+    const machineCopy = { ...machine };
+    // Remove the socket from the machine state since we shouldn't be sending
+    // it back to the client.
+    machineCopy.socket = undefined;
+    machineState.push(machineCopy);
+  }
+  return machineState;
 }
