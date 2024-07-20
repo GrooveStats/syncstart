@@ -11,7 +11,9 @@ import { LOBBYMAN, Lobby, Machine } from '../types/models.types';
 export function canJoinLobby(code: string, password: string) {
   // Does the lobby we're trying to join exist?
   const lobby = LOBBYMAN.lobbies[code];
-  if (lobby === undefined) { return false; }
+  if (lobby === undefined) {
+    return false;
+  }
 
   // Join either if the lobby is public, or one has provided a valid
   // password for a private lobby.
@@ -61,13 +63,19 @@ export function getPlayerCountForLobby(lobby: Lobby): number {
  */
 export function disconnectMachine(socketId: SocketId): boolean {
   const code = LOBBYMAN.machineConnections[socketId];
-  if (code === undefined) { return false; }
+  if (code === undefined) {
+    return false;
+  }
 
   const lobby = LOBBYMAN.lobbies[code];
-  if (lobby === undefined) { return false; }
+  if (lobby === undefined) {
+    return false;
+  }
 
   const machine = lobby.machines[socketId];
-  if (machine === undefined) { return false; }
+  if (machine === undefined) {
+    return false;
+  }
 
   if (machine.socket) {
     if (machine.socket.id in LOBBYMAN.machineConnections) {
@@ -103,13 +111,19 @@ export function disconnectMachine(socketId: SocketId): boolean {
  */
 export function disconnectSpectator(socketId: SocketId): boolean {
   const code = LOBBYMAN.spectatorConnections[socketId];
-  if (code === undefined) { return false; }
+  if (code === undefined) {
+    return false;
+  }
 
   const lobby = LOBBYMAN.lobbies[code];
-  if (lobby === undefined) { return false; }
+  if (lobby === undefined) {
+    return false;
+  }
 
   const spectator = lobby.spectators[socketId];
-  if (spectator === undefined) { return false; }
+  if (spectator === undefined) {
+    return false;
+  }
 
   if (spectator.socket) {
     spectator.socket.leave(code);
@@ -125,7 +139,9 @@ export function disconnectSpectator(socketId: SocketId): boolean {
  */
 export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   const code = LOBBYMAN.machineConnections[socketId];
-  if (code === undefined) { return undefined };
+  if (code === undefined) {
+    return undefined;
+  }
 
   return LOBBYMAN.lobbies[code];
 }

@@ -208,7 +208,7 @@ export class EventsGateway {
     }
 
     machine.ready = true;
-    client.nsp.to(lobby.code).emit('state', getLobbyState(client.id))
+    client.nsp.to(lobby.code).emit('state', getLobbyState(client.id));
 
     let allReady = true;
     for (const machine of Object.values(lobby.machines)) {
@@ -221,7 +221,6 @@ export class EventsGateway {
     if (allReady) {
       client.nsp.to(lobby.code).emit('startSong');
     }
-    
     return true;
   }
 }
