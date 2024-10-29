@@ -1,11 +1,15 @@
 import {
   ConnectedSocket,
   MessageBody,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { WebSocket } from 'ws';
+import { v4 as uuidv4 } from 'uuid';
 import { LOBBYMAN, LobbyInfo, Machine, Spectator } from '../types/models.types';
 import {
   disconnectMachine,
@@ -22,21 +26,54 @@ import {
     origin: '*',
   },
 })
-export class EventsGateway {
+export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
+  afterInit(server: Server) {
+    console.log('WebSocket server initialized');
+  }
+
+  private clients: Map<string, WebSocket> = new Map();
+
+  handleConnection(client: WebSocket, ...args: any[]) {
+    const clientId = uuidv4();
+    console.log('Client connected: ', clientId);
+    this.clients.set(clientId, client);
+    client.on('message', (message: Buffer) => {
+      console.log('Handle the message', message);
+      this.handleMessage(clientId, JSON.parse(message.toString()));
+    });
+    client.on('close', () => this.handleDisconnect(clientId));
+  }
+
+  /** Handles any incoming message
+   * @param client the client sending the message
+   * @param payload the message payload
+   */
+  handleMessage(clientId: string, payload: { message: string }): string {
+    console.log('Message received:', payload.message);
+    this.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ from: clientId, ...payload }));
+      }
+    });
+    return 'message received ' + JSON.stringify(payload);
+  }
+
   /**
    * Cleans up the lobby manager when a client disconnects.
-   * @param client, The socket that disconnected.
+   * @param clientId, The client id that disconnected.
    */
-  handleDisconnect(client: Socket) {
-    if (client.id in LOBBYMAN.machineConnections) {
-      disconnectMachine(client.id);
+  handleDisconnect(clientId: string) {
+    this.clients.delete(clientId);
+
+    if (clientId in LOBBYMAN.machineConnections) {
+      disconnectMachine(clientId);
     }
 
-    if (client.id in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(client.id);
+    if (clientId in LOBBYMAN.spectatorConnections) {
+      disconnectSpectator(clientId);
     }
   }
 
