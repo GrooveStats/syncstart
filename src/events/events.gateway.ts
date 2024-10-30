@@ -10,7 +10,13 @@ import {
 import { Server, Socket } from 'socket.io';
 import { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
-import { LOBBYMAN, LobbyInfo, Machine, Spectator } from '../types/models.types';
+import {
+  LOBBYMAN,
+  LobbyInfo,
+  Machine,
+  SocketId,
+  Spectator,
+} from '../types/models.types';
 import {
   disconnectMachine,
   disconnectSpectator,
@@ -20,6 +26,12 @@ import {
   getLobbyForMachine,
   getLobbyState,
 } from './utils';
+import {
+  CreateLobbyPayload,
+  LobbyCreatedPayload,
+  Message,
+  MessageType,
+} from './events.types';
 
 @WebSocketGateway({
   cors: {
@@ -30,35 +42,42 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
+  private rooms: Map<string, Array<SocketId>> = new Map();
+  private clients: Map<SocketId, WebSocket> = new Map();
+  private handlers: Map<
+    MessageType,
+    (socketId: SocketId, payload: any) => Promise<Message>
+  > = new Map();
+
   afterInit(server: Server) {
-    console.log('WebSocket server initialized');
+    this.handlers.set('createLobby', this.createLobby);
   }
 
-  private clients: Map<string, WebSocket> = new Map();
-
-  handleConnection(client: WebSocket, ...args: any[]) {
-    const clientId = uuidv4();
-    console.log('Client connected: ', clientId);
-    this.clients.set(clientId, client);
-    client.on('message', (message: Buffer) => {
-      console.log('Handle the message', message);
-      this.handleMessage(clientId, JSON.parse(message.toString()));
-    });
-    client.on('close', () => this.handleDisconnect(clientId));
-  }
-
-  /** Handles any incoming message
-   * @param client the client sending the message
-   * @param payload the message payload
-   */
-  handleMessage(clientId: string, payload: { message: string }): string {
-    console.log('Message received:', payload.message);
-    this.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({ from: clientId, ...payload }));
+  handleConnection(socket: WebSocket, ...args: any[]) {
+    const socketId = uuidv4();
+    console.log('Client connected: ', socketId);
+    this.clients.set(socketId, socket);
+    socket.on('message', async (messageBuffer: Buffer) => {
+      const message: Message = JSON.parse(messageBuffer.toString());
+      if (!message.type || !message.payload) {
+        throw new Error('Message requires a type and a payload');
       }
+      if (!this.handlers.has(message.type)) {
+        throw new Error(`No handler for message type "${message.type}"`);
+      }
+      const handler = this.handlers.get(message.type);
+      if (!handler) {
+        throw new Error('Missing handler'); // Should not happen, but makes TS happy
+      }
+      const response = await handler(socketId, message.payload);
+
+      this.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(response));
+        }
+      });
     });
-    return 'message received ' + JSON.stringify(payload);
+    socket.on('close', () => this.handleDisconnect(socketId));
   }
 
   /**
@@ -79,24 +98,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * Creates a new lobby and connects a machine to it.
-   * @param client, The socket that connected.
+   * @param socketId, The socket that connected.
    * @param machine, The machine that connected.
    * @param password, The password for the lobby (empty implies public lobby).
    * @returns, The code for the newly created lobby.
    */
-  @SubscribeMessage('createLobby')
   async createLobby(
-    @ConnectedSocket() client: Socket,
-    @MessageBody('machine') machine: Machine,
-    @MessageBody('password') password: string,
-  ): Promise<string> {
-    if (client.id in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(client.id);
+    socketId: string,
+    { machine, password }: CreateLobbyPayload,
+  ): Promise<Message> {
+    if (socketId in LOBBYMAN.spectatorConnections) {
+      disconnectSpectator(socketId);
     }
 
-    if (client.id in LOBBYMAN.machineConnections) {
+    if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(client.id);
+      disconnectMachine(socketId);
     }
 
     let code = generateLobbyCode();
@@ -105,22 +122,26 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     LOBBYMAN.lobbies[code] = {
-      code: code,
-      password: password ? password : '',
+      code,
+      password: password || '',
       machines: {
-        [client.id]: {
+        [socketId]: {
           ...machine,
-          socket: client,
+          socketId,
           ready: false,
         },
       },
       spectators: {},
     };
-    client.join(code);
-    LOBBYMAN.machineConnections[client.id] = code;
+    // TODO: this context is weird from the handler, maybe just move rooms to LOBBYMAN
+    // if (!this.rooms.has(code)) {
+    //   this.rooms.set(code, []);
+    // }
+    // this.rooms.get(code)?.push(socketId);
+    LOBBYMAN.machineConnections[socketId] = code;
     console.log('Created lobby ' + code);
 
-    return code;
+    return { type: 'lobbyCreated', payload: { code } as LobbyCreatedPayload };
   }
 
   /**
@@ -151,7 +172,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const lobby = LOBBYMAN.lobbies[code];
       lobby.machines[client.id] = {
         ...machine,
-        socket: client,
+        socketId: client.id,
         ready: false,
       };
       LOBBYMAN.machineConnections[client.id] = code;
@@ -199,7 +220,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         lobby.spectators[client.id] = {
           ...spectator,
-          socket: client,
+          socketId: client.id,
         };
         client.join(code);
         LOBBYMAN.spectatorConnections[client.id] = code;
