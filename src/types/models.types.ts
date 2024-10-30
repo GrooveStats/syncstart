@@ -1,5 +1,4 @@
-import { Socket } from 'socket.io';
-import { SocketId } from 'socket.io-adapter';
+export type SocketId = string;
 
 export class Judgments {
   fantasticPlus: number;
@@ -20,7 +19,7 @@ export class Judgments {
 
 export class Spectator {
   profileName: string;
-  socket?: Socket;
+  socketId?: SocketId;
 }
 
 export class SongInfo {
@@ -57,7 +56,7 @@ export class Player {
 export class Machine {
   player1?: Player;
   player2?: Player;
-  socket?: Socket;
+  socketId?: SocketId;
   ready?: boolean;
 }
 

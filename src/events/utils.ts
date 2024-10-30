@@ -77,12 +77,13 @@ export function disconnectMachine(socketId: SocketId): boolean {
     return false;
   }
 
-  if (machine.socket) {
-    if (machine.socket.id in LOBBYMAN.machineConnections) {
-      delete LOBBYMAN.machineConnections[machine.socket.id];
+  if (machine.socketId) {
+    if (machine.socketId in LOBBYMAN.machineConnections) {
+      delete LOBBYMAN.machineConnections[machine.socketId];
     }
 
-    machine.socket.leave(code);
+    // TODO
+    // machine.socket.leave(code);
     // Don't disconnect here, as we may be re-using the connection.
     // In the case of `leaveLobby`, the client can manually disconnect.
   }
@@ -91,12 +92,14 @@ export function disconnectMachine(socketId: SocketId): boolean {
 
   if (getPlayerCountForLobby(lobby) === 0) {
     for (const spectator of Object.values(lobby.spectators)) {
-      if (spectator.socket) {
-        spectator.socket.leave(code);
+      if (spectator.socketId) {
+        // TODO
+        // spectator.socket.leave(code);
         // Force a disconnect. If there are no more players in the lobby,
         // we should remove the spectators as well.
-        spectator.socket.disconnect();
-        delete LOBBYMAN.spectatorConnections[spectator.socket.id];
+        // TODO
+        // spectator.socket.disconnect();
+        delete LOBBYMAN.spectatorConnections[spectator.socketId];
       }
     }
     delete LOBBYMAN.lobbies[code];
@@ -125,8 +128,9 @@ export function disconnectSpectator(socketId: SocketId): boolean {
     return false;
   }
 
-  if (spectator.socket) {
-    spectator.socket.leave(code);
+  if (spectator.socketId) {
+    // TODO
+    // spectator.socket.leave(code);
     // Don't disconnect here, as we may be re-using the connection.
   }
   delete lobby.spectators[socketId];
@@ -152,13 +156,10 @@ export function getLobbyState(socketId: SocketId): Machine[] | null {
     return null;
   }
 
-  const machineState: Machine[] = [];
-  for (const machine of Object.values(lobby.machines)) {
-    const machineCopy = { ...machine };
-    // Remove the socket from the machine state since we shouldn't be sending
-    // it back to the client.
-    machineCopy.socket = undefined;
-    machineState.push(machineCopy);
-  }
+  // Send back the machine state with the socket ids omitted
+  const machineState = Object.entries(lobby.machines).map((m) => ({
+    socketId,
+    ...m,
+  }));
   return machineState;
 }
