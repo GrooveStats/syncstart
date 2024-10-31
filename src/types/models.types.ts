@@ -1,4 +1,10 @@
+import WebSocket = require('ws');
+import { v4 as uuidv4 } from 'uuid';
+import { Message } from '../events/events.types';
+
 export type SocketId = string;
+
+export type LobbyCode = string;
 
 export class Judgments {
   fantasticPlus: number;
@@ -61,7 +67,7 @@ export class Machine {
 }
 
 export class Lobby {
-  code: string;
+  code: LobbyCode;
   // Empty string here is equivalent to "no password". We could use undefined
   // but we can consider them the same.
   password: string;
@@ -72,7 +78,7 @@ export class Lobby {
 }
 
 export class LobbyInfo {
-  code: string;
+  code: LobbyCode;
   isPasswordProtected: boolean;
   playerCount: number;
   spectatorCount: number;
@@ -83,8 +89,94 @@ export class LOBBYMAN {
   static lobbies: Record<string, Lobby>;
 
   // Mapping from socketId to the lobby code of the lobby it's connected to.
-  static machineConnections: Record<SocketId, string>;
+  static machineConnections: Record<SocketId, LobbyCode>;
 
   // Mapping from socketId to the lobby code for the spectators.
-  static spectatorConnections: Record<SocketId, string>;
+  static spectatorConnections: Record<SocketId, LobbyCode>;
+}
+
+export class ROOMMAN {
+  // Mapping of lobby ids (rooms) to the socketIds in that room
+  private static rooms: Map<LobbyCode, Array<SocketId>> = new Map();
+
+  static join(socketId: SocketId, code: LobbyCode) {
+    if (!this.rooms.has(code)) {
+      this.rooms.set(code, []);
+    }
+    const sockets = this.rooms.get(code)!;
+    if (sockets.includes(socketId)) {
+      console.warn(`Socket ${socketId} is already in room ${code}`);
+      return;
+    }
+    console.info(`Socket ${socketId} is joining room ${code}`);
+    sockets.push(socketId);
+    console.log(this.rooms);
+  }
+
+  static leave(socketId: SocketId, code: LobbyCode) {
+    if (!this.rooms.has(code)) {
+      console.warn(`No room for code ${code}`);
+      return;
+    }
+    const sockets = this.rooms.get(code)!;
+    if (!sockets.includes(socketId)) {
+      console.warn(`Socket ${socketId} is not in room ${code}`);
+      return;
+    }
+    console.info(`Socket ${socketId} is leaving room ${code}`);
+    this.rooms.set(
+      code,
+      sockets.filter((s) => s !== socketId),
+    );
+    console.log(this.rooms);
+  }
+}
+
+export class CLIENTS {
+  private static clients: Map<SocketId, WebSocket> = new Map();
+
+  static send(response: Message) {
+    this.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(response));
+      }
+    });
+  }
+
+  static disconnect(socketId: SocketId, reason?: string) {
+    if (!this.clients.has(socketId)) {
+      console.warn(`Client ${socketId} not connected`);
+      return;
+    }
+
+    const message: Message = {
+      type: 'clientDisconnected',
+      payload: { reason: reason || 'Just because' },
+    };
+
+    const client = this.clients.get(socketId);
+    if (!client) return;
+
+    if (client.readyState === WebSocket.OPEN) {
+      this.clients.get(socketId)?.close(1000, JSON.stringify(message));
+    }
+    this.clients.delete(socketId);
+  }
+
+  static connect(socket: WebSocket): string {
+    // Assert we're not already connected
+    const entry = Object.entries(this.clients).find(
+      ([, value]) => socket === value,
+    );
+    if (entry) {
+      console.warn(`Socket ${entry[0]} is already connected`);
+      return entry[0];
+    }
+
+    // Generate an id for the entry, set and return it
+    const socketId = uuidv4();
+    this.clients.set(socketId, socket);
+    console.log('Socket connected: ', socketId);
+    return socketId;
+  }
 }
