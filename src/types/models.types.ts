@@ -130,15 +130,23 @@ export class ROOMMAN {
     );
     console.log(this.rooms);
   }
+
+  static isJoined(socketId: SocketId, code: LobbyCode): boolean {
+    if (!this.rooms.has(code)) return false;
+    return Boolean(this.rooms.get(code)?.includes(socketId));
+  }
 }
 
 export class CLIENTS {
   private static clients: Map<SocketId, WebSocket> = new Map();
 
-  static send(response: Message) {
-    this.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(response));
+  static send(response: Message, code?: LobbyCode) {
+    this.clients.forEach((socket, socketId) => {
+      // if a lobby code is provided, ensure the client is actually in that lobby
+      if (code && !ROOMMAN.isJoined(socketId, code)) return;
+
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(response));
       }
     });
   }
