@@ -9,11 +9,12 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
 import {
+  CLIENTS,
   LOBBYMAN,
   LobbyInfo,
   Machine,
+  ROOMMAN,
   SocketId,
   Spectator,
 } from '../types/models.types';
@@ -42,8 +43,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private rooms: Map<string, Array<SocketId>> = new Map();
-  private clients: Map<SocketId, WebSocket> = new Map();
   private handlers: Map<
     MessageType,
     (socketId: SocketId, payload: any) => Promise<Message>
@@ -54,9 +53,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleConnection(socket: WebSocket, ...args: any[]) {
-    const socketId = uuidv4();
-    console.log('Client connected: ', socketId);
-    this.clients.set(socketId, socket);
+    const socketId = CLIENTS.connect(socket);
+
     socket.on('message', async (messageBuffer: Buffer) => {
       const message: Message = JSON.parse(messageBuffer.toString());
       if (!message.type || !message.payload) {
@@ -71,28 +69,24 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
       const response = await handler(socketId, message.payload);
 
-      this.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify(response));
-        }
-      });
+      CLIENTS.send(response);
     });
     socket.on('close', () => this.handleDisconnect(socketId));
   }
 
   /**
    * Cleans up the lobby manager when a client disconnects.
-   * @param clientId, The client id that disconnected.
+   * @param socketId, The socket id that disconnected.
    */
-  handleDisconnect(clientId: string) {
-    this.clients.delete(clientId);
+  handleDisconnect(socketId: string) {
+    CLIENTS.disconnect(socketId);
 
-    if (clientId in LOBBYMAN.machineConnections) {
-      disconnectMachine(clientId);
+    if (socketId in LOBBYMAN.machineConnections) {
+      disconnectMachine(socketId);
     }
 
-    if (clientId in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(clientId);
+    if (socketId in LOBBYMAN.spectatorConnections) {
+      disconnectSpectator(socketId);
     }
   }
 
@@ -133,11 +127,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       },
       spectators: {},
     };
-    // TODO: this context is weird from the handler, maybe just move rooms to LOBBYMAN
-    // if (!this.rooms.has(code)) {
-    //   this.rooms.set(code, []);
-    // }
-    // this.rooms.get(code)?.push(socketId);
+    ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Created lobby ' + code);
 

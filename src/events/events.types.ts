@@ -1,8 +1,11 @@
 import { Machine } from '../types/models.types';
 
-export type MessageType = 'createLobby' | 'lobbyCreated';
+export type MessageType = 'createLobby' | 'lobbyCreated' | 'clientDisconnected';
 
-export type MessagePayload = CreateLobbyPayload | LobbyCreatedPayload;
+export type MessagePayload =
+  | CreateLobbyPayload
+  | LobbyCreatedPayload
+  | ClientDisconnectedPayload;
 
 export interface Message {
   type: MessageType;
@@ -16,4 +19,8 @@ export interface CreateLobbyPayload {
 
 export interface LobbyCreatedPayload {
   code: Machine;
+}
+
+export interface ClientDisconnectedPayload {
+  reason: string;
 }
