@@ -1,5 +1,11 @@
 import { SocketId } from 'socket.io-adapter';
-import { LOBBYMAN, Lobby, Machine } from '../types/models.types';
+import {
+  CLIENTS,
+  LOBBYMAN,
+  Lobby,
+  Machine,
+  ROOMMAN,
+} from '../types/models.types';
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -82,8 +88,7 @@ export function disconnectMachine(socketId: SocketId): boolean {
       delete LOBBYMAN.machineConnections[machine.socketId];
     }
 
-    // TODO
-    // machine.socket.leave(code);
+    ROOMMAN.leave(machine.socketId, code);
     // Don't disconnect here, as we may be re-using the connection.
     // In the case of `leaveLobby`, the client can manually disconnect.
   }
@@ -93,12 +98,10 @@ export function disconnectMachine(socketId: SocketId): boolean {
   if (getPlayerCountForLobby(lobby) === 0) {
     for (const spectator of Object.values(lobby.spectators)) {
       if (spectator.socketId) {
-        // TODO
-        // spectator.socket.leave(code);
+        ROOMMAN.leave(spectator.socketId, code);
         // Force a disconnect. If there are no more players in the lobby,
         // we should remove the spectators as well.
-        // TODO
-        // spectator.socket.disconnect();
+        CLIENTS.disconnect(spectator.socketId);
         delete LOBBYMAN.spectatorConnections[spectator.socketId];
       }
     }
@@ -129,8 +132,7 @@ export function disconnectSpectator(socketId: SocketId): boolean {
   }
 
   if (spectator.socketId) {
-    // TODO
-    // spectator.socket.leave(code);
+    ROOMMAN.leave(spectator.socketId, code);
     // Don't disconnect here, as we may be re-using the connection.
   }
   delete lobby.spectators[socketId];
