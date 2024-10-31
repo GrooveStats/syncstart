@@ -6,6 +6,7 @@ import {
   Machine,
   ROOMMAN,
 } from '../types/models.types';
+import { Message } from './events.types';
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -152,16 +153,17 @@ export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   return LOBBYMAN.lobbies[code];
 }
 
-export function getLobbyState(socketId: SocketId): Machine[] | null {
+export function getLobbyState(socketId: SocketId): Message | null {
   const lobby = getLobbyForMachine(socketId);
   if (lobby === undefined) {
     return null;
   }
 
   // Send back the machine state with the socket ids omitted
-  const machineState = Object.entries(lobby.machines).map((m) => ({
+  const machines = Object.entries(lobby.machines).map((m) => ({
     socketId,
     ...m,
   }));
-  return machineState;
+
+  return { type: 'lobbyState', payload: { machines } };
 }

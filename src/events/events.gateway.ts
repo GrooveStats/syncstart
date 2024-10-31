@@ -1,22 +1,17 @@
 import {
-  ConnectedSocket,
-  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server } from 'socket.io';
 import { WebSocket } from 'ws';
 import {
   CLIENTS,
   LOBBYMAN,
   LobbyInfo,
-  Machine,
   ROOMMAN,
   SocketId,
-  Spectator,
 } from '../types/models.types';
 import {
   disconnectMachine,
@@ -29,9 +24,11 @@ import {
 } from './utils';
 import {
   CreateLobbyPayload,
+  JoinLobbyPayload,
   LobbyCreatedPayload,
   Message,
   MessageType,
+  SpectateLobbyPayload,
 } from './events.types';
 
 @WebSocketGateway({
@@ -50,6 +47,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   afterInit(server: Server) {
     this.handlers.set('createLobby', this.createLobby);
+    this.handlers.set('joinLobby', this.joinLobby);
+    this.handlers.set('leaveLobby', this.leaveLobby);
+    this.handlers.set('spectateLobby', this.spectateLobby);
+    this.handlers.set('searchLobby', this.searchLobby);
+    this.handlers.set('readyUp', this.readyUp);
   }
 
   handleConnection(socket: WebSocket, ...args: any[]) {
@@ -142,34 +144,33 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param password, The password for the lobby.
    * @returns True if the machine joined the lobby, false otherwise.
    */
-  @SubscribeMessage('joinLobby')
   async joinLobby(
-    @ConnectedSocket() client: Socket,
-    @MessageBody('machine') machine: Machine,
-    @MessageBody('code') code: string,
-    @MessageBody('password') password: string,
-  ): Promise<boolean> {
-    if (canJoinLobby(code, password)) {
-      if (client.id in LOBBYMAN.spectatorConnections) {
-        disconnectSpectator(client.id);
-      }
-
-      if (client.id in LOBBYMAN.machineConnections) {
-        // A machine can only join one lobby at a time.
-        disconnectMachine(client.id);
-      }
-
-      const lobby = LOBBYMAN.lobbies[code];
-      lobby.machines[client.id] = {
-        ...machine,
-        socketId: client.id,
-        ready: false,
-      };
-      LOBBYMAN.machineConnections[client.id] = code;
-      console.log('Machine ' + `${client.id}` + 'joined ' + `${code}`);
-      return true;
+    socketId: SocketId,
+    { machine, code, password }: JoinLobbyPayload,
+  ): Promise<Message> {
+    if (!canJoinLobby(code, password)) {
+      return { type: 'lobbyJoined', payload: { joined: false } };
     }
-    return false;
+
+    if (socketId in LOBBYMAN.spectatorConnections) {
+      disconnectSpectator(socketId);
+    }
+
+    if (socketId in LOBBYMAN.machineConnections) {
+      // A machine can only join one lobby at a time.
+      disconnectMachine(socketId);
+    }
+
+    const lobby = LOBBYMAN.lobbies[code];
+    lobby.machines[socketId] = {
+      ...machine,
+      socketId,
+      ready: false,
+    };
+    LOBBYMAN.machineConnections[socketId] = code;
+    console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
+
+    return { type: 'lobbyJoined', payload: { joined: true } };
   }
 
   /**
@@ -177,86 +178,90 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket connection of the machine to disconnect.
    * @returns, True if the machine was disconnected successfully.
    */
-  @SubscribeMessage('leaveLobby')
-  async leaveLobby(@ConnectedSocket() client: Socket): Promise<boolean> {
-    return disconnectMachine(client.id);
+  async leaveLobby(socketId: SocketId): Promise<Message> {
+    const left = disconnectMachine(socketId);
+    return { type: 'lobbyLeft', payload: { left } };
   }
 
   /**
    * Connects a spectator to an existing lobby.
-   * @param client, The socket that connected.
+   * @param socketId, The socket that connected.
    * @param spectator, The spectator to connect to a lobby.
    * @param code, The code for the lobby to spectate.
    * @param password, The password for the lobby.
    * @returns, The number of spectators in the lobby.
    */
-  @SubscribeMessage('spectateLobby')
   async spectateLobby(
-    @ConnectedSocket() client: Socket,
-    @MessageBody('spectator') spectator: Spectator,
-    @MessageBody('code') code: string,
-    @MessageBody('password') password: string,
-  ): Promise<number> {
+    socketId: SocketId,
+    { spectator, code, password }: SpectateLobbyPayload,
+  ): Promise<Message> {
     const lobby = LOBBYMAN.lobbies[code];
-    if (lobby) {
-      if (
-        !(client.id in LOBBYMAN.machineConnections) &&
-        canJoinLobby(code, password)
-      ) {
-        if (client.id in LOBBYMAN.spectatorConnections) {
-          // A spectator can only spectate one lobby at a time.
-          disconnectSpectator(client.id);
-        }
 
-        lobby.spectators[client.id] = {
-          ...spectator,
-          socketId: client.id,
-        };
-        client.join(code);
-        LOBBYMAN.spectatorConnections[client.id] = code;
-      }
-      return Object.keys(lobby.spectators).length;
+    if (!lobby) {
+      return { type: 'lobbySpectated', payload: { spectators: 0 } };
     }
-    return 0;
+
+    if (
+      !(socketId in LOBBYMAN.machineConnections) &&
+      canJoinLobby(code, password)
+    ) {
+      if (socketId in LOBBYMAN.spectatorConnections) {
+        // A spectator can only spectate one lobby at a time.
+        disconnectSpectator(socketId);
+      }
+
+      lobby.spectators[socketId] = {
+        ...spectator,
+        socketId,
+      };
+      ROOMMAN.join(socketId, code);
+      LOBBYMAN.spectatorConnections[socketId] = code;
+    }
+    return {
+      type: 'lobbySpectated',
+      payload: { spectators: Object.keys(lobby.spectators).length },
+    };
   }
 
   /**
    * Searches for all active lobbies.
    * @returns, The list of lobbies that are currently active.
    */
-  @SubscribeMessage('searchLobby')
-  async searchLobby(): Promise<LobbyInfo[]> {
-    const lobbyInfo: LobbyInfo[] = [];
-    for (const lobby of Object.values(LOBBYMAN.lobbies)) {
-      lobbyInfo.push({
-        code: lobby.code,
-        isPasswordProtected: lobby.password.length !== 0,
-        playerCount: getPlayerCountForLobby(lobby),
-        spectatorCount: Object.keys(lobby.spectators).length,
-      });
-    }
-    console.log('Found ' + lobbyInfo.length + ' lobbies');
-    return lobbyInfo;
+  async searchLobby(): Promise<Message> {
+    const lobbies: LobbyInfo[] = Object.values(LOBBYMAN.lobbies).map((l) => ({
+      code: l.code,
+      isPasswordProtected: l.password.length !== 0,
+      playerCount: getPlayerCountForLobby(l),
+      spectatorCount: Object.keys(l.spectators).length,
+    }));
+    console.log('Found ' + lobbies.length + ' lobbies');
+    return { type: 'lobbySearched', payload: { lobbies } };
   }
 
   /** Updates the ready state of the machine.
    * @param client, The socket that connected.
    * @returns, true if we successfully readied up, false otherwise.
    */
-  @SubscribeMessage('readyUp')
-  async readyUp(@ConnectedSocket() client: Socket): Promise<boolean> {
-    const lobby = getLobbyForMachine(client.id);
+  async readyUp(socketId: SocketId): Promise<Message> {
+    const response: Message = {
+      type: 'readyUpResult',
+      payload: { ready: false },
+    };
+    const lobby = getLobbyForMachine(socketId);
     if (lobby === undefined) {
-      return false;
+      return { ...response, payload: { ready: false } };
     }
 
-    const machine = lobby.machines[client.id];
+    const machine = lobby.machines[socketId];
     if (machine === undefined) {
-      return false;
+      return { ...response, payload: { ready: false } };
     }
 
     machine.ready = true;
-    client.nsp.to(lobby.code).emit('state', getLobbyState(client.id));
+    const stateMessage = getLobbyState(socketId);
+    if (stateMessage) {
+      CLIENTS.send(stateMessage, lobby.code);
+    }
 
     let allReady = true;
     for (const machine of Object.values(lobby.machines)) {
@@ -267,8 +272,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (allReady) {
-      client.nsp.to(lobby.code).emit('startSong');
+      CLIENTS.send({ type: 'startSong', payload: { start: true } }, lobby.code);
     }
-    return true;
+    return { type: 'readyUpResult', payload: { ready: allReady } };
   }
 }
