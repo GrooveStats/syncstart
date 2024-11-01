@@ -37,9 +37,9 @@ export type MessagePayload =
   | LobbyStatePayload
   | StartSongPayload;
 
-export interface Message {
+export interface Message<T = MessagePayload> {
   type: MessageType;
-  payload: MessagePayload;
+  payload: T;
 }
 
 // TODO: We can tighten types here, extend Message with the specific type/payload

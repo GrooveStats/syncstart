@@ -110,7 +110,6 @@ export class ROOMMAN {
     }
     console.info(`Socket ${socketId} is joining room ${code}`);
     sockets.push(socketId);
-    console.log(this.rooms);
   }
 
   static leave(socketId: SocketId, code: LobbyCode) {
@@ -128,7 +127,6 @@ export class ROOMMAN {
       code,
       sockets.filter((s) => s !== socketId),
     );
-    console.log(this.rooms);
   }
 
   static isJoined(socketId: SocketId, code: LobbyCode): boolean {
