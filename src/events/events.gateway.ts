@@ -64,20 +64,24 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const socketId = CLIENTS.connect(socket);
 
     socket.on('message', async (messageBuffer: Buffer) => {
-      const message: Message = JSON.parse(messageBuffer.toString());
-      if (!message.type || !message.payload) {
-        throw new Error('Message requires a type and a payload');
-      }
-      if (!this.handlers.has(message.type)) {
-        throw new Error(`No handler for message type "${message.type}"`);
-      }
-      const handler = this.handlers.get(message.type);
-      if (!handler) {
-        throw new Error('Missing handler'); // Should not happen, but makes TS happy
-      }
-      const response = await handler(socketId, message.payload);
-      if (response) {
-        CLIENTS.sendSocket(response, socketId);
+      try {
+        const message: Message = JSON.parse(messageBuffer.toString());
+        if (!message.type || !message.payload) {
+          throw new Error('Message requires a type and a payload');
+        }
+        if (!this.handlers.has(message.type)) {
+          throw new Error(`No handler for message type "${message.type}"`);
+        }
+        const handler = this.handlers.get(message.type);
+        if (!handler) {
+          throw new Error('Missing handler'); // Should not happen, but makes TS happy
+        }
+        const response = await handler(socketId, message.payload);
+        if (response) {
+          CLIENTS.sendSocket(response, socketId);
+        }
+      } catch (e) {
+        console.error('Error handling message', e);
       }
     });
   }
