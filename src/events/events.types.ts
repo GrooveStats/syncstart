@@ -42,9 +42,6 @@ export interface Message<T = MessagePayload> {
   payload: T;
 }
 
-// TODO: We can tighten types here, extend Message with the specific type/payload
-// Then our handler signatures can return the correct Message
-
 export interface CreateLobbyPayload {
   machine: Machine;
   password: string;
@@ -74,11 +71,8 @@ export interface LobbySpectatedPayload {
   spectators: number;
 }
 
-export interface SearchLobbyPayload {
-  spectator: Spectator;
-  code: LobbyCode;
-  password: string;
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface SearchLobbyPayload {}
 
 export interface LobbySearchedPayload {
   lobbies: LobbyInfo[];
