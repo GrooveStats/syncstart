@@ -54,6 +54,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.handlers.set('readyUp', this.readyUp);
   }
 
+  /**
+   * Listener to handle new websocket connections. Responsible for notifying our CLIENTS manager
+   * and setting up callbacks to handle incoming messages */
   handleConnection(socket: WebSocket, ...args: any[]) {
     const socketId = CLIENTS.connect(socket);
 
@@ -70,17 +73,27 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         throw new Error('Missing handler'); // Should not happen, but makes TS happy
       }
       const response = await handler(socketId, message.payload);
-
-      CLIENTS.send(response);
+      if (response) {
+        CLIENTS.sendSocket(response, socketId);
+      }
     });
-    socket.on('close', () => this.handleDisconnect(socketId));
   }
 
   /**
    * Cleans up the lobby manager when a client disconnects.
-   * @param socketId, The socket id that disconnected.
+   * @param socket, The socket id that disconnected.
+   * @override OnGatewayDisconnect
    */
-  handleDisconnect(socketId: string) {
+  handleDisconnect(socket: WebSocket) {
+    let socketId: SocketId;
+    try {
+      socketId = CLIENTS.getSocketId(socket);
+    } catch (e) {
+      console.error('Disconnect not handled, socketId not found for socket');
+      return;
+    }
+    console.info('Disconnecting socket ' + socketId);
+
     CLIENTS.disconnect(socketId);
 
     if (socketId in LOBBYMAN.machineConnections) {
@@ -260,7 +273,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     machine.ready = true;
     const stateMessage = getLobbyState(socketId);
     if (stateMessage) {
-      CLIENTS.send(stateMessage, lobby.code);
+      CLIENTS.sendLobby(stateMessage, lobby.code);
     }
 
     let allReady = true;
@@ -272,7 +285,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (allReady) {
-      CLIENTS.send({ type: 'startSong', payload: { start: true } }, lobby.code);
+      CLIENTS.sendLobby(
+        { type: 'startSong', payload: { start: true } },
+        lobby.code,
+      );
     }
     return { type: 'readyUpResult', payload: { ready: allReady } };
   }
