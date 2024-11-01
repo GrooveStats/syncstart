@@ -24,8 +24,14 @@ import {
   CreateLobbyPayload,
   JoinLobbyPayload,
   LobbyCreatedPayload,
+  LobbyJoinedPayload,
+  LobbyLeftPayload,
+  LobbySearchedPayload,
+  LobbySpectatedPayload,
   Message,
   MessageType,
+  ReadyUpResultPayload,
+  SearchLobbyPayload,
   SpectateLobbyPayload,
 } from './events.types';
 
@@ -112,7 +118,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async createLobby(
     socketId: string,
     { machine, password }: CreateLobbyPayload,
-  ): Promise<Message> {
+  ): Promise<Message<LobbyCreatedPayload>> {
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
     }
@@ -157,7 +163,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-  ): Promise<Message> {
+  ): Promise<Message<LobbyJoinedPayload>> {
     if (!canJoinLobby(code, password)) {
       return { type: 'lobbyJoined', payload: { joined: false } };
     }
@@ -188,7 +194,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket connection of the machine to disconnect.
    * @returns, True if the machine was disconnected successfully.
    */
-  async leaveLobby(socketId: SocketId): Promise<Message> {
+  async leaveLobby(socketId: SocketId): Promise<Message<LobbyLeftPayload>> {
     const left = disconnectMachine(socketId);
     return { type: 'lobbyLeft', payload: { left } };
   }
@@ -204,7 +210,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async spectateLobby(
     socketId: SocketId,
     { spectator, code, password }: SpectateLobbyPayload,
-  ): Promise<Message> {
+  ): Promise<Message<LobbySpectatedPayload>> {
     const lobby = LOBBYMAN.lobbies[code];
 
     if (!lobby) {
@@ -237,7 +243,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * Searches for all active lobbies.
    * @returns, The list of lobbies that are currently active.
    */
-  async searchLobby(): Promise<Message> {
+  async searchLobby(): Promise<Message<LobbySearchedPayload>> {
     const lobbies: LobbyInfo[] = Object.values(LOBBYMAN.lobbies).map((l) => ({
       code: l.code,
       isPasswordProtected: l.password.length !== 0,
@@ -252,7 +258,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket that connected.
    * @returns, true if we successfully readied up, false otherwise.
    */
-  async readyUp(socketId: SocketId): Promise<Message> {
+  async readyUp(socketId: SocketId): Promise<Message<ReadyUpResultPayload>> {
     const response: Message = {
       type: 'readyUpResult',
       payload: { ready: false },
