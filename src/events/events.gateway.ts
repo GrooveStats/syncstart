@@ -2,9 +2,7 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   WebSocketGateway,
-  WebSocketServer,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
 import { WebSocket } from 'ws';
 import {
   CLIENTS,
@@ -37,15 +35,14 @@ import {
   },
 })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer()
-  server: Server;
-
+  /** Maps received message types to a callback function to handle those message.
+   * The callback function may return a message to send to the calling socket */
   private handlers: Map<
     MessageType,
-    (socketId: SocketId, payload: any) => Promise<Message>
+    (socketId: SocketId, payload: any) => Promise<Message | undefined>
   > = new Map();
 
-  afterInit(server: Server) {
+  afterInit() {
     this.handlers.set('createLobby', this.createLobby);
     this.handlers.set('joinLobby', this.joinLobby);
     this.handlers.set('leaveLobby', this.leaveLobby);
