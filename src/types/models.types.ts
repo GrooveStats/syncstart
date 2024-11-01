@@ -138,12 +138,40 @@ export class ROOMMAN {
 }
 
 export class CLIENTS {
+  // Mapping from socketId to the lobby code for the spectators.
   private static clients: Map<SocketId, WebSocket> = new Map();
 
-  static send(response: Message, code?: LobbyCode) {
+  static getSocketId(targetSocket: WebSocket): SocketId {
+    for (const [socketId, socket] of this.clients.entries()) {
+      if (socket === targetSocket) return socketId;
+    }
+    throw new Error('Socket not found');
+  }
+
+  /** Sends a message to all connected clients */
+  static sendAll(response: Message) {
+    this.clients.forEach((socket) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(response));
+      }
+    });
+  }
+
+  /** Sends a message to a specific socket */
+  static sendSocket(response: Message, socketId: SocketId) {
+    const socket = this.clients.get(socketId);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.warn('Cannot send to socket, socket is not connected');
+      return;
+    }
+    socket.send(JSON.stringify(response));
+  }
+
+  /** Sends a message to all clients in a particular lobby */
+  static sendLobby(response: Message, code: LobbyCode) {
     this.clients.forEach((socket, socketId) => {
-      // if a lobby code is provided, ensure the client is actually in that lobby
-      if (code && !ROOMMAN.isJoined(socketId, code)) return;
+      // skip clients not in the lobby
+      if (!ROOMMAN.isJoined(socketId, code)) return;
 
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(response));
