@@ -1,116 +1,173 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
-import { io, Socket } from 'socket.io-client';
-import { LobbyInfo, LOBBYMAN } from '../types/models.types';
+import { LOBBYMAN } from '../types/models.types';
+import {
+  CreateLobbyPayload,
+  LeaveLobbyPayload,
+  LobbyCreatedPayload,
+  LobbyLeftPayload,
+  LobbySearchedPayload,
+  LobbySpectatedPayload,
+  Message,
+  SearchLobbyPayload,
+  SpectateLobbyPayload,
+} from './events.types';
+import { WebSocket } from 'ws';
+import { WsAdapter } from '@nestjs/platform-ws';
+
+const port = 3001;
 
 describe('EventsGateway', () => {
   let app: INestApplication;
-  let socket: Socket;
+  let client: WebSocket;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-
     app = moduleRef.createNestApplication();
-    // Run tests on a different port than 3000 (the default for this app).
-    await app.listen(3001);
+    app.useWebSocketAdapter(new WsAdapter(app));
+    await app.init();
+    await app.listen(port);
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clear out data before every test.
     LOBBYMAN.lobbies = {};
     LOBBYMAN.machineConnections = {};
     LOBBYMAN.spectatorConnections = {};
 
-    socket = io('http://localhost:3001');
-    socket.connect();
+    // Create a new client
+    client = new WebSocket('ws://localhost:' + port);
+    client.on('error', (error) => {
+      console.error('WebSocket Error:', error);
+    });
+    await new Promise((resolve) => {
+      client.on('open', resolve);
+    });
   });
 
   describe('generalLobbyUsage', () => {
     it('createLobby', async () => {
-      const code = await new Promise<string>((resolve) => {
-        socket.emit(
-          'createLobby',
-          { machine: { player1: { playerName: 'teejusb' } } },
-          (data: string) => {
-            expect(data.length).toEqual(4);
-            resolve(data);
+      console.log('Create Lobby');
+
+      const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
+        client,
+        {
+          type: 'createLobby',
+          payload: {
+            machine: { player1: { playerId: 'id', profileName: 'teejusb' } },
+            password: '',
           },
-        );
-      });
+        },
+      );
+      expect(create.type).toBe('lobbyCreated');
+      expect(create.payload).toHaveProperty('code');
+      expect(typeof create.payload.code).toBe('string');
+      expect(create.payload.code.length).toBe(4);
 
-      await new Promise((resolve) => {
-        socket.emit('searchLobby', (data: LobbyInfo[]) => {
-          expect(data.length).toEqual(1);
-          expect(data[0].code).toEqual(code);
-          expect(data[0].playerCount).toEqual(1);
-          expect(data[0].spectatorCount).toEqual(0);
-          resolve(undefined);
-        });
-      });
+      const search = await send<SearchLobbyPayload, LobbySearchedPayload>(
+        client,
+        {
+          type: 'searchLobby',
+          payload: {},
+        },
+      );
+      expect(search.type).toBe('lobbySearched');
+      expect(search.payload.lobbies.length).toBe(1);
+      expect(search.payload.lobbies[0].code).toBe(create.payload.code);
+      expect(search.payload.lobbies[0].playerCount).toBe(1);
+      expect(search.payload.lobbies[0].spectatorCount).toBe(0);
 
-      await new Promise((resolve) => {
-        socket.emit(
-          'spectateLobby',
-          { code: code, password: '' },
-          (spectatorCount: number) => {
-            // Spectate should fail as a player can't also be a spectator.
-            expect(spectatorCount).toEqual(0);
-            resolve(undefined);
+      const spectate = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
+        client,
+        {
+          type: 'spectateLobby',
+          payload: {
+            spectator: {
+              profileName: 'E.Norma',
+            },
+            code: search.payload.lobbies[0].code,
+            password: '',
           },
-        );
+        },
+      );
+      expect(spectate.type).toBe('lobbySpectated');
+      expect(spectate.payload.spectators).toBe(0); // Spectate should fail as a player can't also be a spectator.
+
+      const client2 = new WebSocket('ws://localhost:' + port);
+      await new Promise((resolve) => {
+        client2.on('open', resolve);
       });
 
-      const socket2 = io('http://localhost:3001');
-      socket2.connect();
-
-      await new Promise((resolve) => {
-        socket2.emit(
-          'spectateLobby',
-          { code: code, password: '' },
-          (spectatorCount: number) => {
-            // socket2 is a different connection, so we can spectate now.
-            expect(spectatorCount).toEqual(1);
-            resolve(undefined);
+      const spectate2 = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
+        client2,
+        {
+          type: 'spectateLobby',
+          payload: {
+            spectator: {
+              profileName: 'Brat',
+            },
+            code: search.payload.lobbies[0].code,
+            password: '',
           },
-        );
-      });
+        },
+      );
+      expect(spectate2.type).toBe('lobbySpectated');
+      expect(spectate2.payload.spectators).toBe(1); // socket2 is a different connection, so we can spectate now.
 
-      await new Promise((resolve) => {
-        socket.emit('searchLobby', (data: LobbyInfo[]) => {
-          expect(data.length).toEqual(1);
-          expect(data[0].code).toEqual(code);
-          expect(data[0].playerCount).toEqual(1);
-          expect(data[0].spectatorCount).toEqual(1);
-          resolve(undefined);
-        });
-      });
+      const search2 = await send<SearchLobbyPayload, LobbySearchedPayload>(
+        client,
+        {
+          type: 'searchLobby',
+          payload: {},
+        },
+      );
+      expect(search2.type).toBe('lobbySearched');
+      expect(search2.payload.lobbies.length).toBe(1);
+      expect(search2.payload.lobbies[0].code).toBe(create.payload.code);
+      expect(search2.payload.lobbies[0].playerCount).toBe(1);
+      expect(search2.payload.lobbies[0].spectatorCount).toBe(1);
 
-      await new Promise((resolve) => {
-        socket.emit('leaveLobby', {}, (didLeave: boolean) => {
-          expect(didLeave).toEqual(true);
-          resolve(undefined);
-        });
+      const leave = await send<LeaveLobbyPayload, LobbyLeftPayload>(client, {
+        type: 'leaveLobby',
+        payload: {},
       });
+      expect(leave.type).toBe('lobbyLeft');
+      expect(leave.payload.left).toBeTruthy();
 
-      await new Promise((resolve) => {
-        socket.emit('searchLobby', (data: LobbyInfo[]) => {
-          expect(data.length).toEqual(0);
-          resolve(undefined);
-        });
-      });
+      const search3 = await send<SearchLobbyPayload, LobbySearchedPayload>(
+        client,
+        {
+          type: 'searchLobby',
+          payload: {},
+        },
+      );
+      expect(search3.type).toBe('lobbySearched');
+      expect(search3.payload.lobbies.length).toBe(0);
 
-      socket2.disconnect();
+      client2.close();
     });
   });
 
   afterEach(() => {
-    socket.disconnect();
+    client.close();
   });
 
   afterAll(async () => {
     await app.close();
   });
 });
+
+function send<T, R>(
+  client: WebSocket,
+  message: Message<T>,
+): Promise<Message<R>> {
+  return new Promise((resolve) => {
+    client.on('message', (response: Message) => {
+      resolve(JSON.parse(response.toString()));
+    });
+    client.send(JSON.stringify(message));
+  });
+}

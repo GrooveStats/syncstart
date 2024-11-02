@@ -6,7 +6,7 @@ export type SocketId = string;
 
 export type LobbyCode = string;
 
-export class Judgments {
+export interface Judgments {
   fantasticPlus: number;
   fantastics: number;
   excellents: number;
@@ -23,12 +23,12 @@ export class Judgments {
   totalRolls: number;
 }
 
-export class Spectator {
+export interface Spectator {
   profileName: string;
   socketId?: SocketId;
 }
 
-export class SongInfo {
+export interface SongInfo {
   // The path for the song on a player's filesystem.
   // We'll use this as a key for other players to play.
   // e.g. 5guys1pack/Earthquake
@@ -50,7 +50,7 @@ export class SongInfo {
   songLength: number;
 }
 
-export class Player {
+export interface Player {
   playerId: string;
   profileName: string;
 
@@ -59,14 +59,14 @@ export class Player {
   exScore?: number;
 }
 
-export class Machine {
+export interface Machine {
   player1?: Player;
   player2?: Player;
   socketId?: SocketId;
   ready?: boolean;
 }
 
-export class Lobby {
+export interface Lobby {
   code: LobbyCode;
   // Empty string here is equivalent to "no password". We could use undefined
   // but we can consider them the same.
@@ -77,7 +77,7 @@ export class Lobby {
   songInfo?: SongInfo;
 }
 
-export class LobbyInfo {
+export interface LobbyInfo {
   code: LobbyCode;
   isPasswordProtected: boolean;
   playerCount: number;

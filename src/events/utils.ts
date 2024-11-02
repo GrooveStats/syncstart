@@ -1,10 +1,9 @@
-import { SocketId } from 'socket.io-adapter';
 import {
   CLIENTS,
   LOBBYMAN,
   Lobby,
-  Machine,
   ROOMMAN,
+  SocketId,
 } from '../types/models.types';
 import { Message } from './events.types';
 
