@@ -1,10 +1,5 @@
-import {
-  CLIENTS,
-  LOBBYMAN,
-  Lobby,
-  ROOMMAN,
-  SocketId,
-} from '../types/models.types';
+import { ClientService } from '../clients/client.service';
+import { LOBBYMAN, Lobby, ROOMMAN, SocketId } from '../types/models.types';
 import { Message } from './events.types';
 
 /**
@@ -67,7 +62,10 @@ export function getPlayerCountForLobby(lobby: Lobby): number {
  * @param socketId, The socket ID of the machine to disconnect.
  * @returns True if the machine left the lobby, false otherwise.
  */
-export function disconnectMachine(socketId: SocketId): boolean {
+export function disconnectMachine(
+  socketId: SocketId,
+  clients: ClientService,
+): boolean {
   const code = LOBBYMAN.machineConnections[socketId];
   if (code === undefined) {
     return false;
@@ -101,7 +99,7 @@ export function disconnectMachine(socketId: SocketId): boolean {
         ROOMMAN.leave(spectator.socketId, code);
         // Force a disconnect. If there are no more players in the lobby,
         // we should remove the spectators as well.
-        CLIENTS.disconnect(spectator.socketId);
+        clients.disconnect(spectator.socketId);
         delete LOBBYMAN.spectatorConnections[spectator.socketId];
       }
     }

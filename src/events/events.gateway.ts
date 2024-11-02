@@ -4,13 +4,7 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { WebSocket } from 'ws';
-import {
-  CLIENTS,
-  LOBBYMAN,
-  LobbyInfo,
-  ROOMMAN,
-  SocketId,
-} from '../types/models.types';
+import { LOBBYMAN, LobbyInfo, ROOMMAN, SocketId } from '../types/models.types';
 import {
   disconnectMachine,
   disconnectSpectator,
@@ -31,9 +25,9 @@ import {
   Message,
   MessageType,
   ReadyUpResultPayload,
-  SearchLobbyPayload,
   SpectateLobbyPayload,
 } from './events.types';
+import { ClientService } from '../clients/client.service';
 
 @WebSocketGateway({
   cors: {
@@ -45,8 +39,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * The callback function may return a message to send to the calling socket */
   private handlers: Map<
     MessageType,
-    (socketId: SocketId, payload: any) => Promise<Message | undefined>
+    (
+      socketId: SocketId,
+      payload: any,
+      clients: ClientService,
+    ) => Promise<Message | undefined>
   > = new Map();
+
+  constructor(private readonly clients: ClientService) {}
 
   afterInit() {
     this.handlers.set('createLobby', this.createLobby);
@@ -60,8 +60,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /**
    * Listener to handle new websocket connections. Responsible for notifying our CLIENTS manager
    * and setting up callbacks to handle incoming messages */
-  handleConnection(socket: WebSocket, ...args: any[]) {
-    const socketId = CLIENTS.connect(socket);
+  handleConnection(socket: WebSocket) {
+    const socketId = this.clients.connect(socket);
 
     socket.on('message', async (messageBuffer: Buffer) => {
       try {
@@ -76,9 +76,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (!handler) {
           throw new Error('Missing handler'); // Should not happen, but makes TS happy
         }
-        const response = await handler(socketId, message.payload);
+        const response = await handler(socketId, message.payload, this.clients);
         if (response) {
-          CLIENTS.sendSocket(response, socketId);
+          this.clients.sendSocket(response, socketId);
         }
       } catch (e) {
         console.error('Error handling message', e);
@@ -94,17 +94,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(socket: WebSocket) {
     let socketId: SocketId;
     try {
-      socketId = CLIENTS.getSocketId(socket);
+      socketId = this.clients.getSocketId(socket);
     } catch (e) {
       console.error('Disconnect not handled, socketId not found for socket');
       return;
     }
     console.info('Disconnecting socket ' + socketId);
 
-    CLIENTS.disconnect(socketId);
+    this.clients.disconnect(socketId);
 
     if (socketId in LOBBYMAN.machineConnections) {
-      disconnectMachine(socketId);
+      disconnectMachine(socketId, this.clients);
     }
 
     if (socketId in LOBBYMAN.spectatorConnections) {
@@ -122,6 +122,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async createLobby(
     socketId: string,
     { machine, password }: CreateLobbyPayload,
+    clients: ClientService,
   ): Promise<Message<LobbyCreatedPayload>> {
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
@@ -129,7 +130,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId);
+      disconnectMachine(socketId, clients);
     }
 
     let code = generateLobbyCode();
@@ -167,6 +168,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
+    clients: ClientService,
   ): Promise<Message<LobbyJoinedPayload>> {
     if (!canJoinLobby(code, password)) {
       return { type: 'lobbyJoined', payload: { joined: false } };
@@ -178,7 +180,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId);
+      disconnectMachine(socketId, clients);
     }
 
     const lobby = LOBBYMAN.lobbies[code];
@@ -198,8 +200,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket connection of the machine to disconnect.
    * @returns, True if the machine was disconnected successfully.
    */
-  async leaveLobby(socketId: SocketId): Promise<Message<LobbyLeftPayload>> {
-    const left = disconnectMachine(socketId);
+  async leaveLobby(
+    socketId: SocketId,
+    {},
+    clients?: ClientService,
+  ): Promise<Message<LobbyLeftPayload>> {
+    let left = false;
+    if (clients) {
+      left = disconnectMachine(socketId, clients);
+    }
     return { type: 'lobbyLeft', payload: { left } };
   }
 
@@ -262,7 +271,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket that connected.
    * @returns, true if we successfully readied up, false otherwise.
    */
-  async readyUp(socketId: SocketId): Promise<Message<ReadyUpResultPayload>> {
+  async readyUp(
+    socketId: SocketId,
+    {},
+    clients: ClientService,
+  ): Promise<Message<ReadyUpResultPayload>> {
     const response: Message = {
       type: 'readyUpResult',
       payload: { ready: false },
@@ -280,7 +293,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     machine.ready = true;
     const stateMessage = getLobbyState(socketId);
     if (stateMessage) {
-      CLIENTS.sendLobby(stateMessage, lobby.code);
+      clients.sendLobby(stateMessage, lobby.code);
     }
 
     let allReady = true;
@@ -292,7 +305,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (allReady) {
-      CLIENTS.sendLobby(
+      clients.sendLobby(
         { type: 'startSong', payload: { start: true } },
         lobby.code,
       );
