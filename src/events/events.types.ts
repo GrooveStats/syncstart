@@ -48,7 +48,7 @@ export interface CreateLobbyPayload {
 }
 
 export interface LobbyCreatedPayload {
-  code: Machine;
+  code: LobbyCode;
 }
 
 export interface JoinLobbyPayload {
