@@ -39,11 +39,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * The callback function may return a message to send to the calling socket */
   private handlers: Map<
     MessageType,
-    (
-      socketId: SocketId,
-      payload: any,
-      clients: ClientService,
-    ) => Promise<Message | undefined>
+    (socketId: SocketId, payload: any) => Promise<Message | undefined>
   > = new Map();
 
   constructor(private readonly clients: ClientService) {}
@@ -76,7 +72,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (!handler) {
           throw new Error('Missing handler'); // Should not happen, but makes TS happy
         }
-        const response = await handler(socketId, message.payload, this.clients);
+        // Retain "this" context within the handler callbacks (otherwise we lose this.clients)
+        const handlerBinded = handler.bind(this);
+        const response = await handlerBinded(socketId, message.payload);
         if (response) {
           this.clients.sendSocket(response, socketId);
         }
@@ -122,7 +120,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async createLobby(
     socketId: string,
     { machine, password }: CreateLobbyPayload,
-    clients: ClientService,
   ): Promise<Message<LobbyCreatedPayload>> {
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
@@ -130,7 +127,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId, clients);
+      disconnectMachine(socketId, this.clients);
     }
 
     let code = generateLobbyCode();
@@ -168,7 +165,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-    clients: ClientService,
   ): Promise<Message<LobbyJoinedPayload>> {
     if (!canJoinLobby(code, password)) {
       return { type: 'lobbyJoined', payload: { joined: false } };
@@ -180,7 +176,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId, clients);
+      disconnectMachine(socketId, this.clients);
     }
 
     const lobby = LOBBYMAN.lobbies[code];
@@ -200,15 +196,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket connection of the machine to disconnect.
    * @returns, True if the machine was disconnected successfully.
    */
-  async leaveLobby(
-    socketId: SocketId,
-    {},
-    clients?: ClientService,
-  ): Promise<Message<LobbyLeftPayload>> {
+  async leaveLobby(socketId: SocketId, {}): Promise<Message<LobbyLeftPayload>> {
     let left = false;
-    if (clients) {
-      left = disconnectMachine(socketId, clients);
-    }
+    left = disconnectMachine(socketId, this.clients);
     return { type: 'lobbyLeft', payload: { left } };
   }
 
@@ -274,7 +264,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async readyUp(
     socketId: SocketId,
     {},
-    clients: ClientService,
   ): Promise<Message<ReadyUpResultPayload>> {
     const response: Message = {
       type: 'readyUpResult',
@@ -293,7 +282,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     machine.ready = true;
     const stateMessage = getLobbyState(socketId);
     if (stateMessage) {
-      clients.sendLobby(stateMessage, lobby.code);
+      this.clients.sendLobby(stateMessage, lobby.code);
     }
 
     let allReady = true;
@@ -305,7 +294,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     if (allReady) {
-      clients.sendLobby(
+      this.clients.sendLobby(
         { type: 'startSong', payload: { start: true } },
         lobby.code,
       );
