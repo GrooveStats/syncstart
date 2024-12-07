@@ -4,7 +4,13 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { WebSocket } from 'ws';
-import { LOBBYMAN, LobbyInfo, ROOMMAN, SocketId } from '../types/models.types';
+import {
+  LOBBYMAN,
+  LobbyInfo,
+  PlayerId,
+  ROOMMAN,
+  SocketId,
+} from '../types/models.types';
 import {
   disconnectMachine,
   disconnectSpectator,
@@ -22,10 +28,13 @@ import {
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
+  MachineUpdatedPayload,
   Message,
   MessageType,
+  ReadyUpPayload,
   ReadyUpResultPayload,
   SpectateLobbyPayload,
+  UpdateMachinePayload,
 } from './events.types';
 import { ClientService } from '../clients/client.service';
 
@@ -54,6 +63,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       spectateLobby: this.spectateLobby,
       searchLobby: this.searchLobby,
       readyUp: this.readyUp,
+      updateMachine: this.updateMachine,
     };
   }
 
@@ -146,7 +156,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         [socketId]: {
           ...machine,
           socketId,
-          ready: false,
+          // ready: false,
         },
       },
       spectators: {},
@@ -184,15 +194,42 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const lobby = LOBBYMAN.lobbies[code];
+    if (Object.keys(lobby.machines).length >= 4) {
+      return {
+        type: 'lobbyJoined',
+        payload: { joined: false, message: 'Too many machines in lobby' },
+      };
+    }
+
     lobby.machines[socketId] = {
       ...machine,
       socketId,
-      ready: false,
+      // ready: false,
     };
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
     return { type: 'lobbyJoined', payload: { joined: true } };
+  }
+
+  /**
+   * Updates a machine
+   */
+  async updateMachine(
+    socketId: SocketId,
+    { machine }: UpdateMachinePayload,
+  ): Promise<Message<MachineUpdatedPayload>> {
+    const code = LOBBYMAN.machineConnections[socketId];
+    if (!code) {
+      return {
+        type: 'machineUpdated',
+        payload: { updated: false, message: 'Code not found' },
+      };
+    }
+    const lobby = LOBBYMAN.lobbies[code];
+    lobby.machines[socketId] = machine;
+
+    return { type: 'machineUpdated', payload: { updated: true } };
   }
 
   /**
@@ -267,7 +304,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   async readyUp(
     socketId: SocketId,
-    {},
+    { playerId }: ReadyUpPayload,
   ): Promise<Message<ReadyUpResultPayload>> {
     const response: Message = {
       type: 'readyUpResult',
@@ -283,7 +320,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { ...response, payload: { ready: false } };
     }
 
-    machine.ready = true;
+    if (machine.player1?.playerId === playerId) {
+      machine.player1.ready = true;
+    }
+    if (machine.player2?.playerId === playerId) {
+      machine.player2.ready = true;
+    }
+
     const stateMessage = getLobbyState(socketId);
     if (stateMessage) {
       this.clients.sendLobby(stateMessage, lobby.code);
@@ -291,7 +334,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     let allReady = true;
     for (const machine of Object.values(lobby.machines)) {
-      if (!machine.ready) {
+      const { player1, player2 } = machine;
+      if (player1 && !player1.ready) {
+        allReady = false;
+        break;
+      }
+      if (player2 && !player2.ready) {
         allReady = false;
         break;
       }

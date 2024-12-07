@@ -2,6 +2,8 @@ export type SocketId = string;
 
 export type LobbyCode = string;
 
+export type PlayerId = 'P1' | 'P2';
+
 export interface Judgments {
   fantasticPlus: number;
   fantastics: number;
@@ -47,19 +49,31 @@ export interface SongInfo {
 }
 
 export interface Player {
-  playerId: string;
+  playerId: PlayerId;
   profileName: string;
 
   judgments?: Judgments;
   score?: number;
   exScore?: number;
+
+  songProgression?: {
+    currentTime: number;
+    totalTime: number;
+  };
+
+  ready?: boolean;
+  screen?:
+    | 'screenSelectMusic'
+    | 'screenGameplay'
+    | 'screenPlayerOptions'
+    | 'screenEvaluation';
 }
 
 export interface Machine {
   player1?: Player;
   player2?: Player;
   socketId?: SocketId;
-  ready?: boolean;
+  // ready?: boolean;
 }
 
 export interface Lobby {
@@ -69,6 +83,9 @@ export interface Lobby {
   password: string;
   machines: Record<SocketId, Machine>;
   spectators: Record<SocketId, Spectator>;
+
+  // song start ? all players ready ?
+  // state: "song_select" | "waiting_to_start" | "playing_song" | "waiting_results"
 
   songInfo?: SongInfo;
 }
@@ -82,7 +99,7 @@ export interface LobbyInfo {
 
 export class LOBBYMAN {
   // Mapping from lobby code to a Lobby
-  static lobbies: Record<string, Lobby>;
+  static lobbies: Record<LobbyCode, Lobby>;
 
   // Mapping from socketId to the lobby code of the lobby it's connected to.
   static machineConnections: Record<SocketId, LobbyCode>;

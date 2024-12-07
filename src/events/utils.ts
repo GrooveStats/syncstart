@@ -162,5 +162,5 @@ export function getLobbyState(socketId: SocketId): Message | null {
     ...m,
   }));
 
-  return { type: 'lobbyState', payload: { machines } };
+  return { type: 'sendLobby', payload: { machines } };
 }
