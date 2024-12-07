@@ -2,6 +2,7 @@ import {
   LobbyCode,
   LobbyInfo,
   Machine,
+  PlayerId,
   Spectator,
 } from '../types/models.types';
 
@@ -10,6 +11,8 @@ export type MessageType =
   | 'lobbyCreated'
   | 'joinLobby'
   | 'lobbyJoined'
+  | 'updateMachine'
+  | 'machineUpdated'
   | 'leaveLobby'
   | 'lobbyLeft'
   | 'spectateLobby'
@@ -19,7 +22,7 @@ export type MessageType =
   | 'clientDisconnected'
   | 'readyUp'
   | 'readyUpResult'
-  | 'lobbyState'
+  | 'sendLobby'
   | 'startSong';
 
 export type MessagePayload =
@@ -27,6 +30,7 @@ export type MessagePayload =
   | LobbyCreatedPayload
   | JoinLobbyPayload
   | LobbyJoinedPayload
+  | UpdateMachinePayload
   | LeaveLobbyPayload
   | LobbyLeftPayload
   | SearchLobbyPayload
@@ -34,7 +38,7 @@ export type MessagePayload =
   | ClientDisconnectedPayload
   | ReadyUpPayload
   | ReadyUpResultPayload
-  | LobbyStatePayload
+  | SendLobbyPayload
   | StartSongPayload;
 
 export interface Message<T = MessagePayload> {
@@ -52,13 +56,24 @@ export interface LobbyCreatedPayload {
 }
 
 export interface JoinLobbyPayload {
-  machine: Machine;
+  machine: Omit<Machine, 'socketId'>;
   code: LobbyCode;
   password: string;
 }
 
+export interface UpdateMachinePayload {
+  machine: Omit<Machine, 'socketId'>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface MachineUpdatedPayload {
+  updated: boolean;
+  message?: string;
+}
+
 export interface LobbyJoinedPayload {
   joined: boolean;
+  message?: string;
 }
 
 export interface SpectateLobbyPayload {
@@ -85,8 +100,9 @@ export interface LobbyLeftPayload {
   left: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface ReadyUpPayload {}
+export interface ReadyUpPayload {
+  playerId: PlayerId;
+}
 
 export interface ReadyUpResultPayload {
   ready: boolean;
@@ -96,7 +112,7 @@ export interface ClientDisconnectedPayload {
   reason: string;
 }
 
-export interface LobbyStatePayload {
+export interface SendLobbyPayload {
   machines: Machine[];
 }
 
