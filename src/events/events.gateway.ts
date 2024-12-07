@@ -37,20 +37,24 @@ import { ClientService } from '../clients/client.service';
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** Maps received message types to a callback function to handle those message.
    * The callback function may return a message to send to the calling socket */
-  private handlers: Map<
-    MessageType,
-    (socketId: SocketId, payload: any) => Promise<Message | undefined>
-  > = new Map();
+  private handlers: Partial<
+    Record<
+      MessageType,
+      (socketId: SocketId, payload: any) => Promise<Message | undefined>
+    >
+  >;
 
   constructor(private readonly clients: ClientService) {}
 
   afterInit() {
-    this.handlers.set('createLobby', this.createLobby);
-    this.handlers.set('joinLobby', this.joinLobby);
-    this.handlers.set('leaveLobby', this.leaveLobby);
-    this.handlers.set('spectateLobby', this.spectateLobby);
-    this.handlers.set('searchLobby', this.searchLobby);
-    this.handlers.set('readyUp', this.readyUp);
+    this.handlers = {
+      createLobby: this.createLobby,
+      joinLobby: this.joinLobby,
+      leaveLobby: this.leaveLobby,
+      spectateLobby: this.spectateLobby,
+      searchLobby: this.searchLobby,
+      readyUp: this.readyUp,
+    };
   }
 
   /**
@@ -65,10 +69,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (!message.type || !message.payload) {
           throw new Error('Message requires a type and a payload');
         }
-        if (!this.handlers.has(message.type)) {
+        if (!this.handlers[message.type]) {
           throw new Error(`No handler for message type "${message.type}"`);
         }
-        const handler = this.handlers.get(message.type);
+        const handler = this.handlers[message.type];
         if (!handler) {
           throw new Error('Missing handler'); // Should not happen, but makes TS happy
         }

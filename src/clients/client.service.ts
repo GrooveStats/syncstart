@@ -6,10 +6,10 @@ import { v4 as uuid } from 'uuid';
 @Injectable()
 export class ClientService {
   // Mapping from socketId to the lobby code for the spectators.
-  private clients: Map<SocketId, WebSocket> = new Map();
+  private clients: Record<SocketId, WebSocket> = {};
 
   getSocketId(targetSocket: WebSocket): SocketId {
-    for (const [socketId, socket] of this.clients.entries()) {
+    for (const [socketId, socket] of Object.entries(this.clients)) {
       if (socket === targetSocket) return socketId;
     }
     throw new Error('Socket not found');
@@ -17,16 +17,16 @@ export class ClientService {
 
   /** Sends a message to all connected clients */
   sendAll(response: Message) {
-    this.clients.forEach((socket) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(response));
+    for (const client of Object.values(this.clients)) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(response));
       }
-    });
+    }
   }
 
   /** Sends a message to a specific socket */
   sendSocket(response: Message, socketId: SocketId) {
-    const socket = this.clients.get(socketId);
+    const socket = this.clients[socketId];
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       console.warn('Cannot send to socket, socket is not connected');
       return;
@@ -36,18 +36,18 @@ export class ClientService {
 
   /** Sends a message to all clients in a particular lobby */
   sendLobby(response: Message, code: LobbyCode) {
-    this.clients.forEach((socket, socketId) => {
+    for (const [socketId, socket] of Object.entries(this.clients)) {
       // skip clients not in the lobby
       if (!ROOMMAN.isJoined(socketId, code)) return;
 
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(response));
       }
-    });
+    }
   }
 
   disconnect(socketId: SocketId, reason?: string) {
-    if (!this.clients.has(socketId)) {
+    if (!this.clients[socketId]) {
       console.warn(`Client ${socketId} not connected`);
       return;
     }
@@ -57,13 +57,13 @@ export class ClientService {
       payload: { reason: reason || 'Just because' },
     };
 
-    const client = this.clients.get(socketId);
+    const client = this.clients[socketId];
     if (!client) return;
 
     if (client.readyState === WebSocket.OPEN) {
-      this.clients.get(socketId)?.close(1000, JSON.stringify(message));
+      client.close(1000, JSON.stringify(message));
     }
-    this.clients.delete(socketId);
+    delete this.clients[socketId];
   }
 
   connect(socket: WebSocket): string {
@@ -78,7 +78,7 @@ export class ClientService {
 
     // Generate an id for the entry, set and return it
     const socketId = uuid();
-    this.clients.set(socketId, socket);
+    this.clients[socketId] = socket;
     console.log('Socket connected: ', socketId);
     return socketId;
   }

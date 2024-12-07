@@ -93,16 +93,13 @@ export class LOBBYMAN {
 
 export class ROOMMAN {
   // Mapping of lobby ids (rooms) to the socketIds in that room
-  private static rooms: Map<LobbyCode, Array<SocketId>> = new Map();
+  private static rooms: Record<LobbyCode, Array<SocketId>> = {};
 
   static join(socketId: SocketId, code: LobbyCode) {
-    if (!this.rooms.has(code)) {
-      this.rooms.set(code, []);
+    if (!this.rooms[code]) {
+      this.rooms[code] = [];
     }
-    const sockets = this.rooms.get(code);
-    if (!sockets) {
-      throw new Error('No socket with code ' + code); // Shouldn't happen, since we set the code right before this
-    }
+    const sockets = this.rooms[code];
     if (sockets.includes(socketId)) {
       console.warn(`Socket ${socketId} is already in room ${code}`);
       return;
@@ -112,11 +109,11 @@ export class ROOMMAN {
   }
 
   static leave(socketId: SocketId, code: LobbyCode) {
-    if (!this.rooms.has(code)) {
+    if (!this.rooms[code]) {
       console.warn(`No room for code ${code}`);
       return;
     }
-    const sockets = this.rooms.get(code);
+    const sockets = this.rooms[code];
     if (!sockets) {
       throw new Error('No socket with code ' + code); // Shouldn't happen, since we set the code right before this
     }
@@ -125,14 +122,11 @@ export class ROOMMAN {
       return;
     }
     console.info(`Socket ${socketId} is leaving room ${code}`);
-    this.rooms.set(
-      code,
-      sockets.filter((s) => s !== socketId),
-    );
+    this.rooms[code] = sockets.filter((s) => s !== socketId);
   }
 
   static isJoined(socketId: SocketId, code: LobbyCode): boolean {
-    if (!this.rooms.has(code)) return false;
-    return Boolean(this.rooms.get(code)?.includes(socketId));
+    if (!this.rooms[code]) return false;
+    return Boolean(this.rooms[code].includes(socketId));
   }
 }
