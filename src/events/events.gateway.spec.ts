@@ -9,9 +9,11 @@ import {
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
+  MachineUpdatedPayload,
   Message,
   SearchLobbyPayload,
   SpectateLobbyPayload,
+  UpdateMachinePayload,
 } from './events.types';
 import { WebSocket } from 'ws';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -57,7 +59,7 @@ describe('EventsGateway', () => {
         {
           type: 'createLobby',
           payload: {
-            machine: { player1: { playerId: 'id', profileName: 'teejusb' } },
+            machine: { player1: { playerId: 'P1', profileName: 'teejusb' } },
             password: '',
           },
         },
@@ -148,6 +150,33 @@ describe('EventsGateway', () => {
       expect(search3.payload.lobbies.length).toBe(0);
 
       client2.close();
+    });
+
+    it('updateMachine', async () => {
+      const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
+        client,
+        {
+          type: 'createLobby',
+          payload: {
+            machine: { player1: { playerId: 'P1', profileName: 'teejusb' } },
+            password: '',
+          },
+        },
+      );
+      const payload: UpdateMachinePayload = {
+        machine: {
+          player1: { playerId: 'P1', profileName: 'teejusb' },
+          player2: { playerId: 'P2', profileName: 'Moistbruh' },
+        },
+      };
+      await send<UpdateMachinePayload, MachineUpdatedPayload>(client, {
+        type: 'updateMachine',
+        payload,
+      });
+
+      const lobby = LOBBYMAN.lobbies[create.payload.code];
+      const machine = Object.values(lobby.machines)[0];
+      expect(machine).toEqual(payload.machine);
     });
   });
 
