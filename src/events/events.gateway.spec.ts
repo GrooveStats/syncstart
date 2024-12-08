@@ -61,7 +61,7 @@ describe('EventsGateway', () => {
             player1: {
               playerId: 'P1',
               profileName: 'teejusb',
-              screen: 'screenSelectMusic',
+              screenName: 'ScreenSelectMusic',
             },
           },
           password: '',
@@ -163,7 +163,7 @@ describe('EventsGateway', () => {
             player1: {
               playerId: 'P1',
               profileName: 'teejusb',
-              screen: 'screenSelectMusic',
+              screenName: 'ScreenSelectMusic',
             },
           },
           password: '',
@@ -174,12 +174,12 @@ describe('EventsGateway', () => {
           player1: {
             playerId: 'P1',
             profileName: 'teejusb',
-            screen: 'screenGameplay',
+            screenName: 'ScreenGameplay',
           },
           player2: {
             playerId: 'P2',
             profileName: 'Moistbruh',
-            screen: 'screenGameplay',
+            screenName: 'ScreenGameplay',
           },
         },
       };
@@ -203,7 +203,7 @@ describe('EventsGateway', () => {
           player1: {
             playerId: 'P1',
             profileName: 'teejusb',
-            screen: 'screenSelectMusic',
+            screenName: 'ScreenSelectMusic',
           },
         },
         password: '',

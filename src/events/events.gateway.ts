@@ -98,8 +98,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         // Retain "this" context within the handler callbacks (otherwise we lose this.clients)
         const handlerBinded = handler.bind(this);
         const response = await handlerBinded(socketId, message.data);
-        console.log('Sending response', JSON.stringify(response, null, 2));
         if (response) {
+          console.log('Sending response', JSON.stringify(response, null, 2));
           this.clients.sendSocket(response, socketId);
         }
       } catch (e) {
@@ -256,11 +256,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const lobby = LOBBYMAN.lobbies[code];
 
     const inSongSelectBefore = inSongSelect(lobby);
-    console.log('In song select before?', inSongSelectBefore);
-    // lobby.machines[socketId] = { ...lobby.machines[socketId], ...machine };
     merge(lobby.machines[socketId], machine);
     const inSongSelectAfter = inSongSelect(lobby);
-    console.log('In song select after?', inSongSelectAfter);
 
     if (!inSongSelectBefore && inSongSelectAfter) {
       lobby.songInfo = undefined;
@@ -275,7 +272,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           machine.player2 = { playerId, profileName, screenName };
         }
       });
-      console.log('!!!! CLEARING SONG INFO !!!!');
     }
 
     const stateMessage = getLobbyState(socketId);
@@ -424,7 +420,6 @@ function inSongSelect(lobby: Lobby): boolean {
   let selecting = true;
   Object.values(lobby.machines).forEach((machine) => {
     if (machine.player1 && machine.player1.screenName !== 'ScreenSelectMusic') {
-      console.log(machine.player1.profileName, ' ', machine.player1.screenName);
       selecting = false;
       return;
     }
