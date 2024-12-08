@@ -2,6 +2,7 @@ import {
   LobbyCode,
   LobbyInfo,
   Machine,
+  Player,
   PlayerId,
   SongInfo,
   Spectator,
@@ -23,7 +24,7 @@ export type MessageType =
   | 'clientDisconnected'
   | 'readyUp'
   | 'readyUpResult'
-  | 'sendLobby'
+  | 'lobbyState'
   | 'selectSong'
   | 'responseStatus'
   | 'startSong';
@@ -41,7 +42,7 @@ export type MessagePayload =
   | ClientDisconnectedPayload
   | ReadyUpPayload
   | ReadyUpResultPayload
-  | SendLobbyPayload
+  | LobbyStatePayload
   | SelectSongPayload
   | StartSongPayload;
 
@@ -74,7 +75,7 @@ export interface UpdateMachinePayload {
   machine: Omit<Machine, 'socketId'>;
 }
 
-export interface ResponseStatus {
+export interface ResponseStatusPayload {
   event: MessageType;
   success: boolean;
   message?: string;
@@ -120,8 +121,10 @@ export interface ClientDisconnectedPayload {
   reason: string;
 }
 
-export interface SendLobbyPayload {
-  machines: Machine[];
+export interface LobbyStatePayload {
+  players: Array<Player>;
+  code: LobbyCode;
+  songInfo?: SongInfo;
 }
 
 export interface StartSongPayload {
