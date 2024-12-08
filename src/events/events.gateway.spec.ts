@@ -58,8 +58,8 @@ describe('EventsGateway', () => {
       const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
         client,
         {
-          type: 'createLobby',
-          payload: {
+          event: 'createLobby',
+          data: {
             machine: {
               player1: {
                 playerId: 'P1',
@@ -71,39 +71,39 @@ describe('EventsGateway', () => {
           },
         },
       );
-      expect(create.type).toBe('lobbyState');
-      expect(create.payload).toHaveProperty('code');
-      expect(typeof create.payload.code).toBe('string');
-      expect(create.payload.code.length).toBe(4);
+      expect(create.event).toBe('lobbyState');
+      expect(create.data).toHaveProperty('code');
+      expect(typeof create.data.code).toBe('string');
+      expect(create.data.code.length).toBe(4);
 
       const search = await send<SearchLobbyPayload, LobbySearchedPayload>(
         client,
         {
-          type: 'searchLobby',
-          payload: {},
+          event: 'searchLobby',
+          data: {},
         },
       );
-      expect(search.type).toBe('lobbySearched');
-      expect(search.payload.lobbies.length).toBe(1);
-      expect(search.payload.lobbies[0].code).toBe(create.payload.code);
-      expect(search.payload.lobbies[0].playerCount).toBe(1);
-      expect(search.payload.lobbies[0].spectatorCount).toBe(0);
+      expect(search.event).toBe('lobbySearched');
+      expect(search.data.lobbies.length).toBe(1);
+      expect(search.data.lobbies[0].code).toBe(create.data.code);
+      expect(search.data.lobbies[0].playerCount).toBe(1);
+      expect(search.data.lobbies[0].spectatorCount).toBe(0);
 
       const spectate = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
         client,
         {
-          type: 'spectateLobby',
-          payload: {
+          event: 'spectateLobby',
+          data: {
             spectator: {
               profileName: 'E.Norma',
             },
-            code: search.payload.lobbies[0].code,
+            code: search.data.lobbies[0].code,
             password: '',
           },
         },
       );
-      expect(spectate.type).toBe('lobbySpectated');
-      expect(spectate.payload.spectators).toBe(0); // Spectate should fail as a player can't also be a spectator.
+      expect(spectate.event).toBe('lobbySpectated');
+      expect(spectate.data.spectators).toBe(0); // Spectate should fail as a player can't also be a spectator.
 
       const client2 = new WebSocket('ws://localhost:' + port);
       await new Promise((resolve) => {
@@ -113,48 +113,48 @@ describe('EventsGateway', () => {
       const spectate2 = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
         client2,
         {
-          type: 'spectateLobby',
-          payload: {
+          event: 'spectateLobby',
+          data: {
             spectator: {
               profileName: 'Brat',
             },
-            code: search.payload.lobbies[0].code,
+            code: search.data.lobbies[0].code,
             password: '',
           },
         },
       );
-      expect(spectate2.type).toBe('lobbySpectated');
-      expect(spectate2.payload.spectators).toBe(1); // socket2 is a different connection, so we can spectate now.
+      expect(spectate2.event).toBe('lobbySpectated');
+      expect(spectate2.data.spectators).toBe(1); // socket2 is a different connection, so we can spectate now.
 
       const search2 = await send<SearchLobbyPayload, LobbySearchedPayload>(
         client,
         {
-          type: 'searchLobby',
-          payload: {},
+          event: 'searchLobby',
+          data: {},
         },
       );
-      expect(search2.type).toBe('lobbySearched');
-      expect(search2.payload.lobbies.length).toBe(1);
-      expect(search2.payload.lobbies[0].code).toBe(create.payload.code);
-      expect(search2.payload.lobbies[0].playerCount).toBe(1);
-      expect(search2.payload.lobbies[0].spectatorCount).toBe(1);
+      expect(search2.event).toBe('lobbySearched');
+      expect(search2.data.lobbies.length).toBe(1);
+      expect(search2.data.lobbies[0].code).toBe(create.data.code);
+      expect(search2.data.lobbies[0].playerCount).toBe(1);
+      expect(search2.data.lobbies[0].spectatorCount).toBe(1);
 
       const leave = await send<LeaveLobbyPayload, LobbyLeftPayload>(client, {
-        type: 'leaveLobby',
-        payload: {},
+        event: 'leaveLobby',
+        data: {},
       });
-      expect(leave.type).toBe('lobbyLeft');
-      expect(leave.payload.left).toBeTruthy();
+      expect(leave.event).toBe('lobbyLeft');
+      expect(leave.data.left).toBeTruthy();
 
       const search3 = await send<SearchLobbyPayload, LobbySearchedPayload>(
         client,
         {
-          type: 'searchLobby',
-          payload: {},
+          event: 'searchLobby',
+          data: {},
         },
       );
-      expect(search3.type).toBe('lobbySearched');
-      expect(search3.payload.lobbies.length).toBe(0);
+      expect(search3.event).toBe('lobbySearched');
+      expect(search3.data.lobbies.length).toBe(0);
 
       client2.close();
     });
@@ -163,8 +163,8 @@ describe('EventsGateway', () => {
       const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
         client,
         {
-          type: 'createLobby',
-          payload: {
+          event: 'createLobby',
+          data: {
             machine: {
               player1: {
                 playerId: 'P1',
@@ -191,11 +191,11 @@ describe('EventsGateway', () => {
         },
       };
       await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
-        type: 'updateMachine',
-        payload,
+        event: 'updateMachine',
+        data: payload,
       });
 
-      const lobby = LOBBYMAN.lobbies[create.payload.code];
+      const lobby = LOBBYMAN.lobbies[create.data.code];
       const machine = Object.values(lobby.machines)[0];
       expect(machine).toEqual(payload.machine);
     });
@@ -203,8 +203,8 @@ describe('EventsGateway', () => {
 
   it('selectSong', async () => {
     const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(client, {
-      type: 'createLobby',
-      payload: {
+      event: 'createLobby',
+      data: {
         machine: {
           player1: {
             playerId: 'P1',
@@ -217,7 +217,7 @@ describe('EventsGateway', () => {
     });
 
     // Initially no song
-    const lobby = LOBBYMAN.lobbies[create.payload.code];
+    const lobby = LOBBYMAN.lobbies[create.data.code];
     expect(lobby.songInfo).toBeUndefined();
 
     const payload: SelectSongPayload = {
@@ -231,8 +231,8 @@ describe('EventsGateway', () => {
 
     // First song sets song info
     await send<SelectSongPayload, ResponseStatusPayload>(client, {
-      type: 'selectSong',
-      payload,
+      event: 'selectSong',
+      data: payload,
     });
     expect(lobby.songInfo).toEqual(payload.songInfo);
 
@@ -241,11 +241,11 @@ describe('EventsGateway', () => {
     const second = await send<SelectSongPayload, ResponseStatusPayload>(
       client,
       {
-        type: 'selectSong',
-        payload,
+        event: 'selectSong',
+        data: payload,
       },
     );
-    expect(second.payload.success).toBe(false);
+    expect(second.data.success).toBe(false);
     expect(lobby.songInfo?.title).toEqual('WOWIE');
   });
 
