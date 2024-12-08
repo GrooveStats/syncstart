@@ -21,7 +21,7 @@ import {
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
-  ResponseStatus,
+  ResponseStatusPayload,
   Message,
   MessageType,
   ReadyUpPayload,
@@ -57,6 +57,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       searchLobby: this.searchLobby,
       readyUp: this.readyUp,
       updateMachine: this.updateMachine,
+      lobbyState: this.lobbyState,
+      selectSong: this.selectSong,
     };
   }
 
@@ -69,7 +71,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     socket.on('message', async (messageBuffer: Buffer) => {
       try {
         const message: Message = JSON.parse(messageBuffer.toString());
-        if (!message.type || !message.payload) {
+        if (!message.type) {
           throw new Error('Message requires a type and a payload');
         }
         if (!this.handlers[message.type]) {
@@ -172,7 +174,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-  ): Promise<Message<ResponseStatus>> {
+  ): Promise<Message<ResponseStatusPayload>> {
     if (!canJoinLobby(code, password)) {
       return {
         type: 'responseStatus',
@@ -223,7 +225,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async updateMachine(
     socketId: SocketId,
     { machine }: UpdateMachinePayload,
-  ): Promise<Message<ResponseStatus>> {
+  ): Promise<Message<ResponseStatusPayload>> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('updateMachine', 'Machine not found');
@@ -231,13 +233,37 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const lobby = LOBBYMAN.lobbies[code];
     lobby.machines[socketId] = machine;
 
+    const stateMessage = getLobbyState(socketId);
+    console.log('Got state', stateMessage);
+    if (stateMessage) {
+      this.clients.sendLobby(stateMessage, lobby.code);
+    }
+
     return responseStatusSuccess('updateMachine');
+  }
+
+  /**
+   * Updates a machine
+   */
+  async lobbyState(
+    socketId: SocketId,
+  ): Promise<Message<ResponseStatusPayload> | undefined> {
+    const code = LOBBYMAN.machineConnections[socketId];
+    if (!code) {
+      return responseStatusFailure('lobbyState', 'Machine not found');
+    }
+    const stateMessage = getLobbyState(socketId);
+    if (stateMessage) {
+      this.clients.sendLobby(stateMessage, code);
+    }
+
+    return undefined;
   }
 
   async selectSong(
     socketId: SocketId,
     { songInfo }: SelectSongPayload,
-  ): Promise<Message<ResponseStatus>> {
+  ): Promise<Message<ResponseStatusPayload>> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('selectSong', 'Machine not found');
@@ -319,26 +345,28 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** Updates the ready state of the machine.
    * @param client, The socket that connected.
+   * @deprecated use updateMachine, kill this
    * @returns, true if we successfully readied up, false otherwise.
    */
   async readyUp(
     socketId: SocketId,
     { playerId }: ReadyUpPayload,
-  ): Promise<Message<ResponseStatus>> {
-    const response: Message<ResponseStatus> = {
-      type: 'responseStatus',
-      payload: { event: 'readyUp', success: false },
-    };
+  ): Promise<Message<ResponseStatusPayload>> {
+    if (!playerId) {
+      return responseStatusFailure('readyUp', 'Missing player id');
+    }
+
     const lobby = getLobbyForMachine(socketId);
     if (lobby === undefined) {
-      response.payload.message = 'Lobby not found';
-      return response;
+      return responseStatusFailure('readyUp', 'Lobby not found');
+    }
+    if (!lobby.songInfo) {
+      return responseStatusFailure('readyUp', 'No song selected');
     }
 
     const machine = lobby.machines[socketId];
     if (machine === undefined) {
-      response.payload.message = 'Machine not found';
-      return response;
+      return responseStatusFailure('readyUp', 'Machine not found');
     }
 
     if (machine.player1?.playerId === playerId) {
@@ -349,6 +377,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const stateMessage = getLobbyState(socketId);
+
     if (stateMessage) {
       this.clients.sendLobby(stateMessage, lobby.code);
     }
@@ -372,8 +401,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         lobby.code,
       );
     }
-    response.payload.success = true;
-    return response;
+    return responseStatusSuccess('readyUp');
   }
 }
 
@@ -381,7 +409,7 @@ function responseStatus(
   event: MessageType,
   success: boolean,
   message?: string,
-): Message<ResponseStatus> {
+): Message<ResponseStatusPayload> {
   return {
     type: 'responseStatus',
     payload: {
@@ -392,13 +420,15 @@ function responseStatus(
   };
 }
 
-function responseStatusSuccess(event: MessageType): Message<ResponseStatus> {
+function responseStatusSuccess(
+  event: MessageType,
+): Message<ResponseStatusPayload> {
   return responseStatus(event, true);
 }
 
 function responseStatusFailure(
   event: MessageType,
   message: string,
-): Message<ResponseStatus> {
+): Message<ResponseStatusPayload> {
   return responseStatus(event, false, message);
 }
