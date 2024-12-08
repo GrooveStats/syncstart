@@ -72,7 +72,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       try {
         const message: Message = JSON.parse(messageBuffer.toString());
         if (!message.event) {
-          throw new Error('Message requires an event');
+          console.log('No event, ignoring: ', JSON.stringify(message, null, 2));
+          return;
         }
         if (!this.handlers[message.event]) {
           throw new Error(`No handler for message type "${message.event}"`);
