@@ -51,15 +51,16 @@ export interface Player {
   playerId: PlayerId;
   profileName: string;
   screenName:
+    | 'NoScreen'
     | 'ScreenSelectMusic'
     | 'ScreenGameplay'
     | 'ScreenPlayerOptions'
     | 'ScreenEvaluation';
+  ready: boolean;
 
   judgments?: Judgments;
   score?: number;
   exScore?: number;
-  ready?: boolean;
   songProgression?: {
     currentTime: number;
     totalTime: number;
