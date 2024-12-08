@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import WebSocket = require('ws');
-import { Message } from '../events/events.types';
+import { EventMessage } from '../events/events.types';
 import { SocketId, LobbyCode, ROOMMAN } from '../types/models.types';
 import { v4 as uuid } from 'uuid';
 @Injectable()
@@ -16,7 +16,7 @@ export class ClientService {
   }
 
   /** Sends a message to all connected clients */
-  sendAll(response: Message) {
+  sendAll(response: EventMessage) {
     for (const client of Object.values(this.clients)) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(response));
@@ -25,7 +25,7 @@ export class ClientService {
   }
 
   /** Sends a message to a specific socket */
-  sendSocket(response: Message, socketId: SocketId) {
+  sendSocket(response: EventMessage, socketId: SocketId) {
     const socket = this.clients[socketId];
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       console.warn('Cannot send to socket, socket is not connected');
@@ -35,7 +35,7 @@ export class ClientService {
   }
 
   /** Sends a message to all clients in a particular lobby */
-  sendLobby(response: Message, code: LobbyCode) {
+  sendLobby(response: EventMessage, code: LobbyCode) {
     for (const [socketId, socket] of Object.entries(this.clients)) {
       // skip clients not in the lobby
       if (!ROOMMAN.isJoined(socketId, code)) return;
@@ -52,7 +52,7 @@ export class ClientService {
       return;
     }
 
-    const message: Message = {
+    const message: EventMessage = {
       event: 'clientDisconnected',
       data: { reason: reason || 'Just because' },
     };

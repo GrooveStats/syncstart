@@ -10,7 +10,6 @@ import {
 
 export type MessageType =
   | 'createLobby'
-  | 'lobbyCreated'
   | 'joinLobby'
   | 'lobbyJoined'
   | 'updateMachine'
@@ -29,9 +28,8 @@ export type MessageType =
   | 'responseStatus'
   | 'startSong';
 
-export type MessagePayload =
-  | CreateLobbyPayload
-  | LobbyCreatedPayload
+export type EventData =
+  | CreateLobbyData
   | JoinLobbyPayload
   | LobbyJoinedPayload
   | UpdateMachinePayload
@@ -46,18 +44,14 @@ export type MessagePayload =
   | SelectSongPayload
   | StartSongPayload;
 
-export interface Message<T = MessagePayload> {
+export interface EventMessage<T = EventData> {
   event: MessageType;
   data: T;
 }
 
-export interface CreateLobbyPayload {
+export interface CreateLobbyData {
   machine: Omit<Machine, 'socketId'>;
   password: string;
-}
-
-export interface LobbyCreatedPayload {
-  code: LobbyCode;
 }
 
 export interface JoinLobbyPayload {
