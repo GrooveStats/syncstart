@@ -71,8 +71,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     socket.on('message', async (messageBuffer: Buffer) => {
       try {
         const message: Message = JSON.parse(messageBuffer.toString());
+        console.log('Received message:', JSON.stringify(message, null, 2));
         if (!message.event) {
-          console.log('No event, ignoring: ', JSON.stringify(message, null, 2));
+          console.log('No event, ignoring');
           return;
         }
         if (!this.handlers[message.event]) {
