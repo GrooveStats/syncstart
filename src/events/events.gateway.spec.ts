@@ -14,6 +14,7 @@ import {
   SearchLobbyPayload,
   SpectateLobbyPayload,
   UpdateMachinePayload,
+  SelectSongPayload,
 } from './events.types';
 import { WebSocket } from 'ws';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -59,12 +60,18 @@ describe('EventsGateway', () => {
         {
           type: 'createLobby',
           payload: {
-            machine: { player1: { playerId: 'P1', profileName: 'teejusb' } },
+            machine: {
+              player1: {
+                playerId: 'P1',
+                profileName: 'teejusb',
+                screen: 'screenSelectMusic',
+              },
+            },
             password: '',
           },
         },
       );
-      expect(create.type).toBe('lobbyCreated');
+      expect(create.type).toBe('lobbyState');
       expect(create.payload).toHaveProperty('code');
       expect(typeof create.payload.code).toBe('string');
       expect(create.payload.code.length).toBe(4);
@@ -158,15 +165,29 @@ describe('EventsGateway', () => {
         {
           type: 'createLobby',
           payload: {
-            machine: { player1: { playerId: 'P1', profileName: 'teejusb' } },
+            machine: {
+              player1: {
+                playerId: 'P1',
+                profileName: 'teejusb',
+                screen: 'screenSelectMusic',
+              },
+            },
             password: '',
           },
         },
       );
       const payload: UpdateMachinePayload = {
         machine: {
-          player1: { playerId: 'P1', profileName: 'teejusb' },
-          player2: { playerId: 'P2', profileName: 'Moistbruh' },
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screen: 'screenGameplay',
+          },
+          player2: {
+            playerId: 'P2',
+            profileName: 'Moistbruh',
+            screen: 'screenGameplay',
+          },
         },
       };
       await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
@@ -178,6 +199,54 @@ describe('EventsGateway', () => {
       const machine = Object.values(lobby.machines)[0];
       expect(machine).toEqual(payload.machine);
     });
+  });
+
+  it('selectSong', async () => {
+    const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(client, {
+      type: 'createLobby',
+      payload: {
+        machine: {
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screen: 'screenSelectMusic',
+          },
+        },
+        password: '',
+      },
+    });
+
+    // Initially no song
+    const lobby = LOBBYMAN.lobbies[create.payload.code];
+    expect(lobby.songInfo).toBeUndefined();
+
+    const payload: SelectSongPayload = {
+      songInfo: {
+        songPath: '11 guys/wowie',
+        songLength: 42069,
+        title: 'WOWIE',
+        artist: 'the guys',
+      },
+    };
+
+    // First song sets song info
+    await send<SelectSongPayload, ResponseStatusPayload>(client, {
+      type: 'selectSong',
+      payload,
+    });
+    expect(lobby.songInfo).toEqual(payload.songInfo);
+
+    // Second one will fail
+    payload.songInfo.title = 'Updated';
+    const second = await send<SelectSongPayload, ResponseStatusPayload>(
+      client,
+      {
+        type: 'selectSong',
+        payload,
+      },
+    );
+    expect(second.payload.success).toBe(false);
+    expect(lobby.songInfo?.title).toEqual('WOWIE');
   });
 
   afterEach(() => {

@@ -44,29 +44,26 @@ export interface SongInfo {
   songPath: string;
   title: string;
   artist: string;
-  stepartist: string;
   songLength: number;
 }
 
 export interface Player {
   playerId: PlayerId;
   profileName: string;
-
-  judgments?: Judgments;
-  score?: number;
-  exScore?: number;
-
-  songProgression?: {
-    currentTime: number;
-    totalTime: number;
-  };
-
-  ready?: boolean;
-  screen?:
+  screen:
     | 'screenSelectMusic'
     | 'screenGameplay'
     | 'screenPlayerOptions'
     | 'screenEvaluation';
+
+  judgments?: Judgments;
+  score?: number;
+  exScore?: number;
+  ready?: boolean;
+  songProgression?: {
+    currentTime: number;
+    totalTime: number;
+  };
 }
 
 export interface Machine {
