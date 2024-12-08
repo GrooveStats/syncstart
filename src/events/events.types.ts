@@ -52,7 +52,7 @@ export interface Message<T = MessagePayload> {
 }
 
 export interface CreateLobbyPayload {
-  machine: Machine;
+  machine: Omit<Machine, 'socketId'>;
   password: string;
 }
 
