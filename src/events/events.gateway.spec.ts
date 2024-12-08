@@ -9,7 +9,7 @@ import {
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
-  MachineUpdatedPayload,
+  ResponseStatus,
   Message,
   SearchLobbyPayload,
   SpectateLobbyPayload,
@@ -169,7 +169,7 @@ describe('EventsGateway', () => {
           player2: { playerId: 'P2', profileName: 'Moistbruh' },
         },
       };
-      await send<UpdateMachinePayload, MachineUpdatedPayload>(client, {
+      await send<UpdateMachinePayload, ResponseStatus>(client, {
         type: 'updateMachine',
         payload,
       });

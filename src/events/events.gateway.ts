@@ -18,15 +18,13 @@ import {
   CreateLobbyPayload,
   JoinLobbyPayload,
   LobbyCreatedPayload,
-  LobbyJoinedPayload,
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
-  MachineUpdatedPayload,
+  ResponseStatus,
   Message,
   MessageType,
   ReadyUpPayload,
-  ReadyUpResultPayload,
   SpectateLobbyPayload,
   UpdateMachinePayload,
 } from './events.types';
@@ -173,9 +171,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-  ): Promise<Message<LobbyJoinedPayload>> {
+  ): Promise<Message<ResponseStatus>> {
     if (!canJoinLobby(code, password)) {
-      return { type: 'lobbyJoined', payload: { joined: false } };
+      return {
+        type: 'responseStatus',
+        payload: {
+          event: 'joinLobby',
+          success: false,
+          message:
+            'Cannot join lobby. Check the code + password and try again.',
+        },
+      };
     }
 
     if (socketId in LOBBYMAN.spectatorConnections) {
@@ -190,8 +196,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const lobby = LOBBYMAN.lobbies[code];
     if (Object.keys(lobby.machines).length >= 4) {
       return {
-        type: 'lobbyJoined',
-        payload: { joined: false, message: 'Too many machines in lobby' },
+        type: 'responseStatus',
+        payload: {
+          event: 'joinLobby',
+          success: false,
+          message: 'Too many machines in the lobby.',
+        },
       };
     }
 
@@ -203,7 +213,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
-    return { type: 'lobbyJoined', payload: { joined: true } };
+    return {
+      type: 'responseStatus',
+      payload: {
+        event: 'joinLobby',
+        success: true,
+      },
+    };
   }
 
   /**
@@ -212,18 +228,25 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async updateMachine(
     socketId: SocketId,
     { machine }: UpdateMachinePayload,
-  ): Promise<Message<MachineUpdatedPayload>> {
+  ): Promise<Message<ResponseStatus>> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return {
-        type: 'machineUpdated',
-        payload: { updated: false, message: 'Code not found' },
+        type: 'responseStatus',
+        payload: {
+          event: 'updateMachine',
+          success: false,
+          message: 'Code not found',
+        },
       };
     }
     const lobby = LOBBYMAN.lobbies[code];
     lobby.machines[socketId] = machine;
 
-    return { type: 'machineUpdated', payload: { updated: true } };
+    return {
+      type: 'responseStatus',
+      payload: { event: 'updateMachine', success: true },
+    };
   }
 
   /**
@@ -299,19 +322,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async readyUp(
     socketId: SocketId,
     { playerId }: ReadyUpPayload,
-  ): Promise<Message<ReadyUpResultPayload>> {
-    const response: Message = {
-      type: 'readyUpResult',
-      payload: { ready: false },
+  ): Promise<Message<ResponseStatus>> {
+    const response: Message<ResponseStatus> = {
+      type: 'responseStatus',
+      payload: { event: 'readyUp', success: false },
     };
     const lobby = getLobbyForMachine(socketId);
     if (lobby === undefined) {
-      return { ...response, payload: { ready: false } };
+      response.payload.message = 'Lobby not found';
+      return response;
     }
 
     const machine = lobby.machines[socketId];
     if (machine === undefined) {
-      return { ...response, payload: { ready: false } };
+      response.payload.message = 'Machine not found';
+      return response;
     }
 
     if (machine.player1?.playerId === playerId) {
@@ -345,6 +370,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         lobby.code,
       );
     }
-    return { type: 'readyUpResult', payload: { ready: allReady } };
+    response.payload.success = true;
+    return response;
   }
 }
