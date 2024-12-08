@@ -177,5 +177,5 @@ export function getLobbyState(
   });
   const { songInfo, code } = lobby;
 
-  return { type: 'lobbyState', payload: { players, songInfo, code } };
+  return { event: 'lobbyState', data: { players, songInfo, code } };
 }
