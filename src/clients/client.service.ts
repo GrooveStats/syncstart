@@ -47,6 +47,7 @@ export class ClientService {
   }
 
   disconnect(socketId: SocketId, reason?: string) {
+    console.log('Client disconnecting', socketId);
     if (!this.clients[socketId]) {
       console.warn(`Client ${socketId} not connected`);
       return;
@@ -68,6 +69,7 @@ export class ClientService {
 
   connect(socket: WebSocket): string {
     // Assert we're not already connected
+    console.log('Client connecting');
     const entry = Object.entries(this.clients).find(
       ([, value]) => socket === value,
     );

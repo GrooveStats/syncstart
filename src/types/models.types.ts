@@ -50,11 +50,11 @@ export interface SongInfo {
 export interface Player {
   playerId: PlayerId;
   profileName: string;
-  screen:
-    | 'screenSelectMusic'
-    | 'screenGameplay'
-    | 'screenPlayerOptions'
-    | 'screenEvaluation';
+  screenName:
+    | 'ScreenSelectMusic'
+    | 'ScreenGameplay'
+    | 'ScreenPlayerOptions'
+    | 'ScreenEvaluation';
 
   judgments?: Judgments;
   score?: number;
@@ -107,7 +107,7 @@ export class LOBBYMAN {
 
 export class ROOMMAN {
   // Mapping of lobby ids (rooms) to the socketIds in that room
-  private static rooms: Record<LobbyCode, Array<SocketId>> = {};
+  public static rooms: Record<LobbyCode, Array<SocketId>> = {};
 
   static join(socketId: SocketId, code: LobbyCode) {
     if (!this.rooms[code]) {
