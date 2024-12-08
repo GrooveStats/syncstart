@@ -6,7 +6,7 @@ import {
   ROOMMAN,
   SocketId,
 } from '../types/models.types';
-import { LobbyStatePayload, Message } from './events.types';
+import { LobbyStatePayload, EventMessage } from './events.types';
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -158,7 +158,7 @@ export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
 
 export function getLobbyState(
   socketId: SocketId,
-): Message<LobbyStatePayload> | null {
+): EventMessage<LobbyStatePayload> | null {
   const lobby = getLobbyForMachine(socketId);
   if (lobby === undefined) {
     return null;

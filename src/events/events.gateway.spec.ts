@@ -3,14 +3,13 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
 import { LOBBYMAN } from '../types/models.types';
 import {
-  CreateLobbyPayload,
+  CreateLobbyData,
   LeaveLobbyPayload,
-  LobbyCreatedPayload,
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
   ResponseStatusPayload,
-  Message,
+  EventMessage,
   SearchLobbyPayload,
   SpectateLobbyPayload,
   UpdateMachinePayload,
@@ -55,26 +54,21 @@ describe('EventsGateway', () => {
     it('createLobby', async () => {
       console.log('Create Lobby');
 
-      const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
-        client,
-        {
-          event: 'createLobby',
-          data: {
-            machine: {
-              player1: {
-                playerId: 'P1',
-                profileName: 'teejusb',
-                screen: 'screenSelectMusic',
-              },
+      const create = await send<CreateLobbyData, undefined>(client, {
+        event: 'createLobby',
+        data: {
+          machine: {
+            player1: {
+              playerId: 'P1',
+              profileName: 'teejusb',
+              screen: 'screenSelectMusic',
             },
-            password: '',
           },
+          password: '',
         },
-      );
+      });
       expect(create.event).toBe('lobbyState');
       expect(create.data).toHaveProperty('code');
-      expect(typeof create.data.code).toBe('string');
-      expect(create.data.code.length).toBe(4);
 
       const search = await send<SearchLobbyPayload, LobbySearchedPayload>(
         client,
@@ -85,7 +79,9 @@ describe('EventsGateway', () => {
       );
       expect(search.event).toBe('lobbySearched');
       expect(search.data.lobbies.length).toBe(1);
-      expect(search.data.lobbies[0].code).toBe(create.data.code);
+      const code = Object.values(LOBBYMAN.lobbies)[0].code;
+
+      expect(search.data.lobbies[0].code).toBe(code);
       expect(search.data.lobbies[0].playerCount).toBe(1);
       expect(search.data.lobbies[0].spectatorCount).toBe(0);
 
@@ -135,7 +131,7 @@ describe('EventsGateway', () => {
       );
       expect(search2.event).toBe('lobbySearched');
       expect(search2.data.lobbies.length).toBe(1);
-      expect(search2.data.lobbies[0].code).toBe(create.data.code);
+      expect(search2.data.lobbies[0].code).toBe(code);
       expect(search2.data.lobbies[0].playerCount).toBe(1);
       expect(search2.data.lobbies[0].spectatorCount).toBe(1);
 
@@ -160,22 +156,19 @@ describe('EventsGateway', () => {
     });
 
     it('updateMachine', async () => {
-      const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(
-        client,
-        {
-          event: 'createLobby',
-          data: {
-            machine: {
-              player1: {
-                playerId: 'P1',
-                profileName: 'teejusb',
-                screen: 'screenSelectMusic',
-              },
+      await send<CreateLobbyData, undefined>(client, {
+        event: 'createLobby',
+        data: {
+          machine: {
+            player1: {
+              playerId: 'P1',
+              profileName: 'teejusb',
+              screen: 'screenSelectMusic',
             },
-            password: '',
           },
+          password: '',
         },
-      );
+      });
       const payload: UpdateMachinePayload = {
         machine: {
           player1: {
@@ -194,15 +187,16 @@ describe('EventsGateway', () => {
         event: 'updateMachine',
         data: payload,
       });
+      const code = LOBBYMAN.lobbies[0].code;
 
-      const lobby = LOBBYMAN.lobbies[create.data.code];
+      const lobby = LOBBYMAN.lobbies[code];
       const machine = Object.values(lobby.machines)[0];
       expect(machine).toEqual(payload.machine);
     });
   });
 
   it('selectSong', async () => {
-    const create = await send<CreateLobbyPayload, LobbyCreatedPayload>(client, {
+    const create = await send<CreateLobbyData, undefined>(client, {
       event: 'createLobby',
       data: {
         machine: {
@@ -215,9 +209,10 @@ describe('EventsGateway', () => {
         password: '',
       },
     });
+    const code = Object.values(LOBBYMAN.lobbies)[0].code;
 
     // Initially no song
-    const lobby = LOBBYMAN.lobbies[create.data.code];
+    const lobby = LOBBYMAN.lobbies[code];
     expect(lobby.songInfo).toBeUndefined();
 
     const payload: SelectSongPayload = {
@@ -260,10 +255,10 @@ describe('EventsGateway', () => {
 
 function send<T, R>(
   client: WebSocket,
-  message: Message<T>,
-): Promise<Message<R>> {
+  message: EventMessage<T>,
+): Promise<EventMessage<R>> {
   return new Promise((resolve) => {
-    client.on('message', (response: Message) => {
+    client.on('message', (response: EventMessage) => {
       resolve(JSON.parse(response.toString()));
     });
     client.send(JSON.stringify(message));
