@@ -1,6 +1,12 @@
 import { ClientService } from '../clients/client.service';
-import { LOBBYMAN, Lobby, ROOMMAN, SocketId } from '../types/models.types';
-import { Message } from './events.types';
+import {
+  LOBBYMAN,
+  Lobby,
+  Player,
+  ROOMMAN,
+  SocketId,
+} from '../types/models.types';
+import { LobbyStatePayload, Message } from './events.types';
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -150,17 +156,26 @@ export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   return LOBBYMAN.lobbies[code];
 }
 
-export function getLobbyState(socketId: SocketId): Message | null {
+export function getLobbyState(
+  socketId: SocketId,
+): Message<LobbyStatePayload> | null {
   const lobby = getLobbyForMachine(socketId);
   if (lobby === undefined) {
     return null;
   }
 
   // Send back the machine state with the socket ids omitted
-  const machines = Object.entries(lobby.machines).map((m) => ({
-    socketId,
-    ...m,
-  }));
+  const players: Player[] = [];
+  Object.values(lobby.machines).forEach((machine) => {
+    const { player1, player2 } = machine;
+    if (player1) {
+      players.push(player1);
+    }
+    if (player2) {
+      players.push(player2);
+    }
+  });
+  const { songInfo, code } = lobby;
 
-  return { type: 'sendLobby', payload: { machines } };
+  return { type: 'lobbyState', payload: { players, songInfo, code } };
 }
