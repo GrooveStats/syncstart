@@ -53,8 +53,8 @@ export class ClientService {
     }
 
     const message: Message = {
-      type: 'clientDisconnected',
-      payload: { reason: reason || 'Just because' },
+      event: 'clientDisconnected',
+      data: { reason: reason || 'Just because' },
     };
 
     const client = this.clients[socketId];

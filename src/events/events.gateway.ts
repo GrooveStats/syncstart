@@ -71,19 +71,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     socket.on('message', async (messageBuffer: Buffer) => {
       try {
         const message: Message = JSON.parse(messageBuffer.toString());
-        if (!message.type) {
-          throw new Error('Message requires a type and a payload');
+        if (!message.event) {
+          throw new Error('Message requires an event');
         }
-        if (!this.handlers[message.type]) {
-          throw new Error(`No handler for message type "${message.type}"`);
+        if (!this.handlers[message.event]) {
+          throw new Error(`No handler for message type "${message.event}"`);
         }
-        const handler = this.handlers[message.type];
+        const handler = this.handlers[message.event];
         if (!handler) {
           throw new Error('Missing handler'); // Should not happen, but makes TS happy
         }
         // Retain "this" context within the handler callbacks (otherwise we lose this.clients)
         const handlerBinded = handler.bind(this);
-        const response = await handlerBinded(socketId, message.payload);
+        const response = await handlerBinded(socketId, message.data);
         if (response) {
           this.clients.sendSocket(response, socketId);
         }
@@ -182,8 +182,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<Message<ResponseStatusPayload> | undefined> {
     if (!canJoinLobby(code, password)) {
       return {
-        type: 'responseStatus',
-        payload: {
+        event: 'responseStatus',
+        data: {
           event: 'joinLobby',
           success: false,
           message:
@@ -300,7 +300,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async leaveLobby(socketId: SocketId, {}): Promise<Message<LobbyLeftPayload>> {
     let left = false;
     left = disconnectMachine(socketId, this.clients);
-    return { type: 'lobbyLeft', payload: { left } };
+    return { event: 'lobbyLeft', data: { left } };
   }
 
   /**
@@ -318,7 +318,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const lobby = LOBBYMAN.lobbies[code];
 
     if (!lobby) {
-      return { type: 'lobbySpectated', payload: { spectators: 0 } };
+      return { event: 'lobbySpectated', data: { spectators: 0 } };
     }
 
     if (
@@ -338,8 +338,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       LOBBYMAN.spectatorConnections[socketId] = code;
     }
     return {
-      type: 'lobbySpectated',
-      payload: { spectators: Object.keys(lobby.spectators).length },
+      event: 'lobbySpectated',
+      data: { spectators: Object.keys(lobby.spectators).length },
     };
   }
 
@@ -355,7 +355,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       spectatorCount: Object.keys(l.spectators).length,
     }));
     console.log('Found ' + lobbies.length + ' lobbies');
-    return { type: 'lobbySearched', payload: { lobbies } };
+    return { event: 'lobbySearched', data: { lobbies } };
   }
 
   /** Updates the ready state of the machine.
@@ -412,7 +412,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (allReady) {
       this.clients.sendLobby(
-        { type: 'startSong', payload: { start: true } },
+        { event: 'startSong', data: { start: true } },
         lobby.code,
       );
     }
@@ -426,8 +426,8 @@ function responseStatus(
   message?: string,
 ): Message<ResponseStatusPayload> {
   return {
-    type: 'responseStatus',
-    payload: {
+    event: 'responseStatus',
+    data: {
       event,
       success,
       message,

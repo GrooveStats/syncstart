@@ -47,8 +47,8 @@ export type MessagePayload =
   | StartSongPayload;
 
 export interface Message<T = MessagePayload> {
-  type: MessageType;
-  payload: T;
+  event: MessageType;
+  data: T;
 }
 
 export interface CreateLobbyPayload {
