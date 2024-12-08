@@ -27,6 +27,7 @@ import {
   ReadyUpPayload,
   SpectateLobbyPayload,
   UpdateMachinePayload,
+  SelectSongPayload,
 } from './events.types';
 import { ClientService } from '../clients/client.service';
 
@@ -195,14 +196,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const lobby = LOBBYMAN.lobbies[code];
     if (Object.keys(lobby.machines).length >= 4) {
-      return {
-        type: 'responseStatus',
-        payload: {
-          event: 'joinLobby',
-          success: false,
-          message: 'Too many machines in the lobby.',
-        },
-      };
+      responseStatusFailure('joinLobby', 'Too many machines in the lobby');
+    }
+
+    if (lobby.songInfo) {
+      responseStatusFailure(
+        'joinLobby',
+        'A song is already selected, please try later.',
+      );
     }
 
     lobby.machines[socketId] = {
@@ -213,13 +214,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
-    return {
-      type: 'responseStatus',
-      payload: {
-        event: 'joinLobby',
-        success: true,
-      },
-    };
+    return responseStatusSuccess('joinLobby');
   }
 
   /**
@@ -231,22 +226,29 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<Message<ResponseStatus>> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
-      return {
-        type: 'responseStatus',
-        payload: {
-          event: 'updateMachine',
-          success: false,
-          message: 'Code not found',
-        },
-      };
+      return responseStatusFailure('updateMachine', 'Machine not found');
     }
     const lobby = LOBBYMAN.lobbies[code];
     lobby.machines[socketId] = machine;
 
-    return {
-      type: 'responseStatus',
-      payload: { event: 'updateMachine', success: true },
-    };
+    return responseStatusSuccess('updateMachine');
+  }
+
+  async selectSong(
+    socketId: SocketId,
+    { songInfo }: SelectSongPayload,
+  ): Promise<Message<ResponseStatus>> {
+    const code = LOBBYMAN.machineConnections[socketId];
+    if (!code) {
+      return responseStatusFailure('selectSong', 'Machine not found');
+    }
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby.songInfo) {
+      return responseStatusFailure('selectSong', 'Song already selected');
+    }
+    lobby.songInfo = songInfo;
+
+    return responseStatusSuccess('selectSong');
   }
 
   /**
@@ -373,4 +375,30 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     response.payload.success = true;
     return response;
   }
+}
+
+function responseStatus(
+  event: MessageType,
+  success: boolean,
+  message?: string,
+): Message<ResponseStatus> {
+  return {
+    type: 'responseStatus',
+    payload: {
+      event,
+      success,
+      message,
+    },
+  };
+}
+
+function responseStatusSuccess(event: MessageType): Message<ResponseStatus> {
+  return responseStatus(event, true);
+}
+
+function responseStatusFailure(
+  event: MessageType,
+  message: string,
+): Message<ResponseStatus> {
+  return responseStatus(event, false, message);
 }
