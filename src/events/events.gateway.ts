@@ -4,27 +4,30 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { WebSocket } from 'ws';
-import { LOBBYMAN, LobbyInfo, ROOMMAN, SocketId } from '../types/models.types';
+import {
+  LOBBYMAN,
+  Lobby,
+  LobbyInfo,
+  ROOMMAN,
+  SocketId,
+} from '../types/models.types';
 import {
   disconnectMachine,
   disconnectSpectator,
   canJoinLobby,
   generateLobbyCode,
   getPlayerCountForLobby,
-  getLobbyForMachine,
   getLobbyState,
 } from './utils';
 import {
-  CreateLobbyPayload,
+  CreateLobbyData,
   JoinLobbyPayload,
-  LobbyCreatedPayload,
   LobbyLeftPayload,
   LobbySearchedPayload,
   LobbySpectatedPayload,
   ResponseStatusPayload,
-  Message,
-  MessageType,
-  ReadyUpPayload,
+  EventMessage,
+  MessageType as EventType,
   SpectateLobbyPayload,
   UpdateMachinePayload,
   SelectSongPayload,
@@ -41,8 +44,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * The callback function may return a message to send to the calling socket */
   private handlers: Partial<
     Record<
-      MessageType,
-      (socketId: SocketId, payload: any) => Promise<Message | undefined>
+      EventType,
+      (socketId: SocketId, payload: any) => Promise<EventMessage | undefined>
     >
   >;
 
@@ -55,7 +58,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       leaveLobby: this.leaveLobby,
       spectateLobby: this.spectateLobby,
       searchLobby: this.searchLobby,
-      readyUp: this.readyUp,
       updateMachine: this.updateMachine,
       lobbyState: this.lobbyState,
       selectSong: this.selectSong,
@@ -70,7 +72,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     socket.on('message', async (messageBuffer: Buffer) => {
       try {
-        const message: Message = JSON.parse(messageBuffer.toString());
+        const messageString = messageBuffer.toString();
+        let message: EventMessage;
+        try {
+          message = JSON.parse(messageString);
+        } catch (e) {
+          console.error('Error parsing message', messageString);
+          return;
+        }
+
         console.log('Received message:', JSON.stringify(message, null, 2));
         if (!message.event) {
           console.log('No event, ignoring');
@@ -130,8 +140,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   async createLobby(
     socketId: string,
-    { machine, password }: CreateLobbyPayload,
-  ): Promise<Message<LobbyCreatedPayload> | undefined> {
+    { machine, password }: CreateLobbyData,
+  ): Promise<undefined> {
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
     }
@@ -153,7 +163,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         [socketId]: {
           ...machine,
           socketId,
-          // ready: false,
         },
       },
       spectators: {},
@@ -167,7 +176,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.clients.sendLobby(stateMessage, code);
     }
     return undefined;
-    // return { type: 'lobbyCreated', payload: { code } as LobbyCreatedPayload };
   }
 
   /**
@@ -181,7 +189,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-  ): Promise<Message<ResponseStatusPayload> | undefined> {
+  ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
     if (!canJoinLobby(code, password)) {
       return {
         event: 'responseStatus',
@@ -236,13 +244,21 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async updateMachine(
     socketId: SocketId,
     { machine }: UpdateMachinePayload,
-  ): Promise<Message<ResponseStatusPayload> | undefined> {
+  ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('updateMachine', 'Machine not found');
     }
     const lobby = LOBBYMAN.lobbies[code];
+
+    const inSongSelectBefore = inSongSelect(lobby);
     lobby.machines[socketId] = machine;
+    const inSongSelectAfter = inSongSelect(lobby);
+
+    if (!inSongSelectBefore && inSongSelectAfter) {
+      lobby.songInfo = undefined;
+      console.log('!!!! CLEARING SONG INFO !!!!');
+    }
 
     const stateMessage = getLobbyState(socketId);
     if (stateMessage) {
@@ -258,7 +274,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   async lobbyState(
     socketId: SocketId,
-  ): Promise<Message<ResponseStatusPayload> | undefined> {
+  ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('lobbyState', 'Machine not found');
@@ -274,7 +290,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async selectSong(
     socketId: SocketId,
     { songInfo }: SelectSongPayload,
-  ): Promise<Message<ResponseStatusPayload> | undefined> {
+  ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('selectSong', 'Machine not found');
@@ -299,7 +315,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * @param client, The socket connection of the machine to disconnect.
    * @returns, True if the machine was disconnected successfully.
    */
-  async leaveLobby(socketId: SocketId, {}): Promise<Message<LobbyLeftPayload>> {
+  async leaveLobby(
+    socketId: SocketId,
+    {},
+  ): Promise<EventMessage<LobbyLeftPayload>> {
     let left = false;
     left = disconnectMachine(socketId, this.clients);
     return { event: 'lobbyLeft', data: { left } };
@@ -316,7 +335,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async spectateLobby(
     socketId: SocketId,
     { spectator, code, password }: SpectateLobbyPayload,
-  ): Promise<Message<LobbySpectatedPayload>> {
+  ): Promise<EventMessage<LobbySpectatedPayload>> {
     const lobby = LOBBYMAN.lobbies[code];
 
     if (!lobby) {
@@ -349,7 +368,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * Searches for all active lobbies.
    * @returns, The list of lobbies that are currently active.
    */
-  async searchLobby(): Promise<Message<LobbySearchedPayload>> {
+  async searchLobby(): Promise<EventMessage<LobbySearchedPayload>> {
     const lobbies: LobbyInfo[] = Object.values(LOBBYMAN.lobbies).map((l) => ({
       code: l.code,
       isPasswordProtected: l.password.length !== 0,
@@ -359,74 +378,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     console.log('Found ' + lobbies.length + ' lobbies');
     return { event: 'lobbySearched', data: { lobbies } };
   }
-
-  /** Updates the ready state of the machine.
-   * @param client, The socket that connected.
-   * @deprecated use updateMachine, kill this
-   * @returns, true if we successfully readied up, false otherwise.
-   */
-  async readyUp(
-    socketId: SocketId,
-    { playerId }: ReadyUpPayload,
-  ): Promise<Message<ResponseStatusPayload>> {
-    if (!playerId) {
-      return responseStatusFailure('readyUp', 'Missing player id');
-    }
-
-    const lobby = getLobbyForMachine(socketId);
-    if (lobby === undefined) {
-      return responseStatusFailure('readyUp', 'Lobby not found');
-    }
-    if (!lobby.songInfo) {
-      return responseStatusFailure('readyUp', 'No song selected');
-    }
-
-    const machine = lobby.machines[socketId];
-    if (machine === undefined) {
-      return responseStatusFailure('readyUp', 'Machine not found');
-    }
-
-    if (machine.player1?.playerId === playerId) {
-      machine.player1.ready = true;
-    }
-    if (machine.player2?.playerId === playerId) {
-      machine.player2.ready = true;
-    }
-
-    const stateMessage = getLobbyState(socketId);
-
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, lobby.code);
-    }
-
-    let allReady = true;
-    for (const machine of Object.values(lobby.machines)) {
-      const { player1, player2 } = machine;
-      if (player1 && !player1.ready) {
-        allReady = false;
-        break;
-      }
-      if (player2 && !player2.ready) {
-        allReady = false;
-        break;
-      }
-    }
-
-    if (allReady) {
-      this.clients.sendLobby(
-        { event: 'startSong', data: { start: true } },
-        lobby.code,
-      );
-    }
-    return responseStatusSuccess('readyUp');
-  }
 }
 
 function responseStatus(
-  event: MessageType,
+  event: EventType,
   success: boolean,
   message?: string,
-): Message<ResponseStatusPayload> {
+): EventMessage<ResponseStatusPayload> {
   return {
     event: 'responseStatus',
     data: {
@@ -437,15 +395,20 @@ function responseStatus(
   };
 }
 
-function responseStatusSuccess(
-  event: MessageType,
-): Message<ResponseStatusPayload> {
-  return responseStatus(event, true);
+function responseStatusFailure(
+  event: EventType,
+  message: string,
+): EventMessage<ResponseStatusPayload> {
+  return responseStatus(event, false, message);
 }
 
-function responseStatusFailure(
-  event: MessageType,
-  message: string,
-): Message<ResponseStatusPayload> {
-  return responseStatus(event, false, message);
+function inSongSelect(lobby: Lobby): boolean {
+  let selecting = true;
+  Object.values(lobby.machines).forEach((machine) => {
+    if (machine.player1?.screen === 'screenSelectMusic') {
+      selecting = false;
+      return;
+    }
+  });
+  return selecting;
 }
