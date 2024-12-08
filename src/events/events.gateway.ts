@@ -32,6 +32,8 @@ import {
   UpdateMachinePayload,
   SelectSongPayload,
 } from './events.types';
+import { merge } from 'lodash';
+
 import { ClientService } from '../clients/client.service';
 
 @WebSocketGateway({
@@ -96,6 +98,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         // Retain "this" context within the handler callbacks (otherwise we lose this.clients)
         const handlerBinded = handler.bind(this);
         const response = await handlerBinded(socketId, message.data);
+        console.log('Sending response', JSON.stringify(response, null, 2));
         if (response) {
           this.clients.sendSocket(response, socketId);
         }
@@ -227,6 +230,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ...machine,
       socketId,
     };
+    ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
@@ -252,11 +256,25 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const lobby = LOBBYMAN.lobbies[code];
 
     const inSongSelectBefore = inSongSelect(lobby);
-    lobby.machines[socketId] = machine;
+    console.log('In song select before?', inSongSelectBefore);
+    // lobby.machines[socketId] = { ...lobby.machines[socketId], ...machine };
+    merge(lobby.machines[socketId], machine);
     const inSongSelectAfter = inSongSelect(lobby);
+    console.log('In song select after?', inSongSelectAfter);
 
     if (!inSongSelectBefore && inSongSelectAfter) {
       lobby.songInfo = undefined;
+      Object.values(lobby.machines).forEach((machine) => {
+        // Only retain relevant fields
+        if (machine.player1) {
+          const { playerId, profileName, screenName } = machine.player1;
+          machine.player1 = { playerId, profileName, screenName };
+        }
+        if (machine.player2) {
+          const { playerId, profileName, screenName } = machine.player2;
+          machine.player2 = { playerId, profileName, screenName };
+        }
+      });
       console.log('!!!! CLEARING SONG INFO !!!!');
     }
 
@@ -405,11 +423,12 @@ function responseStatusFailure(
 function inSongSelect(lobby: Lobby): boolean {
   let selecting = true;
   Object.values(lobby.machines).forEach((machine) => {
-    if (machine.player1?.screen === 'screenSelectMusic') {
+    if (machine.player1 && machine.player1.screenName !== 'ScreenSelectMusic') {
+      console.log(machine.player1.profileName, ' ', machine.player1.screenName);
       selecting = false;
       return;
     }
-    if (machine.player2?.screen === 'screenSelectMusic') {
+    if (machine.player2 && machine.player2.screenName !== 'ScreenSelectMusic') {
       selecting = false;
       return;
     }

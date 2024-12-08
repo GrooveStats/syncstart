@@ -2,6 +2,7 @@ import { ClientService } from '../clients/client.service';
 import {
   LOBBYMAN,
   Lobby,
+  LobbyCode,
   Player,
   ROOMMAN,
   SocketId,
@@ -93,6 +94,7 @@ export function disconnectMachine(
     }
 
     ROOMMAN.leave(machine.socketId, code);
+
     // Don't disconnect here, as we may be re-using the connection.
     // In the case of `leaveLobby`, the client can manually disconnect.
   }
@@ -110,6 +112,12 @@ export function disconnectMachine(
       }
     }
     delete LOBBYMAN.lobbies[code];
+  } else {
+    // When a client disconnects, notify other clients
+    const stateMessage = getLobbyStateForCode(code);
+    if (stateMessage) {
+      clients.sendLobby(stateMessage, code);
+    }
   }
   return true;
 }
@@ -149,6 +157,9 @@ export function disconnectSpectator(socketId: SocketId): boolean {
  */
 export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   const code = LOBBYMAN.machineConnections[socketId];
+
+  console.log('Getting lobby state', code, socketId);
+
   if (code === undefined) {
     return undefined;
   }
@@ -163,9 +174,15 @@ export function getLobbyState(
   if (lobby === undefined) {
     return null;
   }
+  return getLobbyStateForCode(lobby.code);
+}
 
+export function getLobbyStateForCode(
+  code: LobbyCode,
+): EventMessage<LobbyStatePayload> | null {
   // Send back the machine state with the socket ids omitted
   const players: Player[] = [];
+  const lobby = LOBBYMAN.lobbies[code];
   Object.values(lobby.machines).forEach((machine) => {
     const { player1, player2 } = machine;
     if (player1) {
@@ -175,7 +192,7 @@ export function getLobbyState(
       players.push(player2);
     }
   });
-  const { songInfo, code } = lobby;
+  const { songInfo } = lobby;
 
   return { event: 'lobbyState', data: { players, songInfo, code } };
 }
