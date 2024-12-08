@@ -409,6 +409,10 @@ function inSongSelect(lobby: Lobby): boolean {
       selecting = false;
       return;
     }
+    if (machine.player2?.screen === 'screenSelectMusic') {
+      selecting = false;
+      return;
+    }
   });
   return selecting;
 }
