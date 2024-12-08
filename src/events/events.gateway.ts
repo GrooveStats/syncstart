@@ -4,13 +4,7 @@ import {
   WebSocketGateway,
 } from '@nestjs/websockets';
 import { WebSocket } from 'ws';
-import {
-  LOBBYMAN,
-  LobbyInfo,
-  PlayerId,
-  ROOMMAN,
-  SocketId,
-} from '../types/models.types';
+import { LOBBYMAN, LobbyInfo, ROOMMAN, SocketId } from '../types/models.types';
 import {
   disconnectMachine,
   disconnectSpectator,
