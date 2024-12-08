@@ -3,6 +3,7 @@ import {
   LobbyInfo,
   Machine,
   PlayerId,
+  SongInfo,
   Spectator,
 } from '../types/models.types';
 
@@ -23,6 +24,8 @@ export type MessageType =
   | 'readyUp'
   | 'readyUpResult'
   | 'sendLobby'
+  | 'selectSong'
+  | 'responseStatus'
   | 'startSong';
 
 export type MessagePayload =
@@ -39,6 +42,7 @@ export type MessagePayload =
   | ReadyUpPayload
   | ReadyUpResultPayload
   | SendLobbyPayload
+  | SelectSongPayload
   | StartSongPayload;
 
 export interface Message<T = MessagePayload> {
@@ -61,19 +65,23 @@ export interface JoinLobbyPayload {
   password: string;
 }
 
+export interface LobbyJoinedPayload {
+  joined: boolean;
+  message?: string;
+}
+
 export interface UpdateMachinePayload {
   machine: Omit<Machine, 'socketId'>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface MachineUpdatedPayload {
-  updated: boolean;
+export interface ResponseStatus {
+  event: MessageType;
+  success: boolean;
   message?: string;
 }
 
-export interface LobbyJoinedPayload {
-  joined: boolean;
-  message?: string;
+export interface SelectSongPayload {
+  songInfo: SongInfo;
 }
 
 export interface SpectateLobbyPayload {
