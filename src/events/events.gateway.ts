@@ -129,7 +129,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async createLobby(
     socketId: string,
     { machine, password }: CreateLobbyPayload,
-  ): Promise<Message<LobbyCreatedPayload>> {
+  ): Promise<Message<LobbyCreatedPayload> | undefined> {
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
     }
@@ -160,7 +160,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Created lobby ' + code);
 
-    return { type: 'lobbyCreated', payload: { code } as LobbyCreatedPayload };
+    const stateMessage = getLobbyState(socketId);
+    if (stateMessage) {
+      this.clients.sendLobby(stateMessage, code);
+    }
+    return undefined;
+    // return { type: 'lobbyCreated', payload: { code } as LobbyCreatedPayload };
   }
 
   /**
@@ -174,7 +179,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async joinLobby(
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
-  ): Promise<Message<ResponseStatusPayload>> {
+  ): Promise<Message<ResponseStatusPayload> | undefined> {
     if (!canJoinLobby(code, password)) {
       return {
         type: 'responseStatus',
@@ -211,12 +216,16 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     lobby.machines[socketId] = {
       ...machine,
       socketId,
-      // ready: false,
     };
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
-    return responseStatusSuccess('joinLobby');
+    const stateMessage = getLobbyState(socketId);
+    if (stateMessage) {
+      this.clients.sendLobby(stateMessage, lobby.code);
+    }
+    return undefined;
+    // return responseStatusSuccess('joinLobby');
   }
 
   /**
@@ -225,7 +234,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async updateMachine(
     socketId: SocketId,
     { machine }: UpdateMachinePayload,
-  ): Promise<Message<ResponseStatusPayload>> {
+  ): Promise<Message<ResponseStatusPayload> | undefined> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('updateMachine', 'Machine not found');
@@ -234,12 +243,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     lobby.machines[socketId] = machine;
 
     const stateMessage = getLobbyState(socketId);
-    console.log('Got state', stateMessage);
     if (stateMessage) {
       this.clients.sendLobby(stateMessage, lobby.code);
     }
 
-    return responseStatusSuccess('updateMachine');
+    return undefined;
+    // return responseStatusSuccess('updateMachine');
   }
 
   /**
@@ -263,7 +272,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async selectSong(
     socketId: SocketId,
     { songInfo }: SelectSongPayload,
-  ): Promise<Message<ResponseStatusPayload>> {
+  ): Promise<Message<ResponseStatusPayload> | undefined> {
     const code = LOBBYMAN.machineConnections[socketId];
     if (!code) {
       return responseStatusFailure('selectSong', 'Machine not found');
@@ -274,7 +283,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     lobby.songInfo = songInfo;
 
-    return responseStatusSuccess('selectSong');
+    const stateMessage = getLobbyState(socketId);
+    if (stateMessage) {
+      this.clients.sendLobby(stateMessage, code);
+    }
+
+    return undefined;
+    // return responseStatusSuccess('selectSong');
   }
 
   /**
