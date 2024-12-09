@@ -8,7 +8,7 @@ import {
   Spectator,
 } from '../types/models.types';
 
-export type MessageType =
+export type EventType =
   | 'createLobby'
   | 'joinLobby'
   | 'lobbyJoined'
@@ -45,7 +45,7 @@ export type EventData =
   | StartSongPayload;
 
 export interface EventMessage<T = EventData> {
-  event: MessageType;
+  event: EventType;
   data: T;
 }
 
@@ -70,7 +70,7 @@ export interface UpdateMachinePayload {
 }
 
 export interface ResponseStatusPayload {
-  event: MessageType;
+  event: EventType;
   success: boolean;
   message?: string;
 }
