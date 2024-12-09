@@ -71,7 +71,6 @@ export interface Machine {
   player1?: Player;
   player2?: Player;
   socketId?: SocketId;
-  // ready?: boolean;
 }
 
 export interface Lobby {
@@ -81,9 +80,6 @@ export interface Lobby {
   password: string;
   machines: Record<SocketId, Machine>;
   spectators: Record<SocketId, Spectator>;
-
-  // song start ? all players ready ?
-  // state: "song_select" | "waiting_to_start" | "playing_song" | "waiting_results"
 
   songInfo?: SongInfo;
 }

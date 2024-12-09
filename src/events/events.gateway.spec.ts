@@ -17,6 +17,7 @@ import {
 } from './events.types';
 import { WebSocket } from 'ws';
 import { WsAdapter } from '@nestjs/platform-ws';
+import { omit } from 'lodash';
 
 const port = 3001;
 
@@ -62,6 +63,7 @@ describe('EventsGateway', () => {
               playerId: 'P1',
               profileName: 'teejusb',
               screenName: 'ScreenSelectMusic',
+              ready: false,
             },
           },
           password: '',
@@ -79,7 +81,7 @@ describe('EventsGateway', () => {
       );
       expect(search.event).toBe('lobbySearched');
       expect(search.data.lobbies.length).toBe(1);
-      const code = Object.values(LOBBYMAN.lobbies)[0].code;
+      const code = Object.keys(LOBBYMAN.lobbies)[0];
 
       expect(search.data.lobbies[0].code).toBe(code);
       expect(search.data.lobbies[0].playerCount).toBe(1);
@@ -164,39 +166,102 @@ describe('EventsGateway', () => {
               playerId: 'P1',
               profileName: 'teejusb',
               screenName: 'ScreenSelectMusic',
+              ready: false,
             },
           },
           password: '',
         },
       });
-      const payload: UpdateMachinePayload = {
+      const update1: UpdateMachinePayload = {
         machine: {
           player1: {
             playerId: 'P1',
             profileName: 'teejusb',
             screenName: 'ScreenGameplay',
+            ready: false,
+            score: 0.99,
+            songProgression: {
+              currentTime: 1,
+              totalTime: 2,
+            },
           },
           player2: {
             playerId: 'P2',
             profileName: 'Moistbruh',
             screenName: 'ScreenGameplay',
+            ready: false,
+            score: 0.99,
           },
         },
       };
       await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
         event: 'updateMachine',
-        data: payload,
+        data: update1,
       });
-      const code = LOBBYMAN.lobbies[0].code;
-
-      const lobby = LOBBYMAN.lobbies[code];
+      const lobby = Object.values(LOBBYMAN.lobbies)[0];
       const machine = Object.values(lobby.machines)[0];
-      expect(machine).toEqual(payload.machine);
+      expect(omit(machine, 'socketId')).toEqual(update1.machine);
+
+      // If one player goes back to SongSelect (I know, technically not possible for a single machine)
+      // The songInfo/scores should persist
+      const update2: UpdateMachinePayload = {
+        machine: {
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screenName: 'ScreenSelectMusic',
+            ready: false,
+          },
+          player2: {
+            playerId: 'P2',
+            profileName: 'Moistbruh',
+            screenName: 'ScreenGameplay',
+            ready: false,
+            score: 0.99,
+          },
+        },
+      };
+      await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
+        event: 'updateMachine',
+        data: update2,
+      });
+
+      expect(machine.player1).toBeDefined();
+      expect(machine.player1?.screenName).toEqual('ScreenSelectMusic');
+      expect(machine.player1?.score).toBeDefined();
+      expect(machine.player1?.songProgression).toBeDefined();
+
+      // Now we go back to select music, it should wipe songInfo/scores
+      const update3: UpdateMachinePayload = {
+        machine: {
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screenName: 'ScreenSelectMusic',
+            ready: false,
+          },
+          player2: {
+            playerId: 'P2',
+            profileName: 'Moistbruh',
+            screenName: 'ScreenSelectMusic',
+            ready: false,
+          },
+        },
+      };
+      await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
+        event: 'updateMachine',
+        data: update3,
+      });
+
+      expect(machine.player1).toBeDefined();
+      expect(machine.player1?.screenName).toEqual('ScreenSelectMusic');
+      expect(machine.player1?.score).toBeUndefined();
+      expect(machine.player1?.songProgression).toBeUndefined();
     });
   });
 
   it('selectSong', async () => {
-    const create = await send<CreateLobbyData, undefined>(client, {
+    await send<CreateLobbyData, undefined>(client, {
       event: 'createLobby',
       data: {
         machine: {
@@ -204,15 +269,15 @@ describe('EventsGateway', () => {
             playerId: 'P1',
             profileName: 'teejusb',
             screenName: 'ScreenSelectMusic',
+            ready: false,
           },
         },
         password: '',
       },
     });
-    const code = Object.values(LOBBYMAN.lobbies)[0].code;
 
     // Initially no song
-    const lobby = LOBBYMAN.lobbies[code];
+    const [, lobby] = Object.entries(LOBBYMAN.lobbies)[0];
     expect(lobby.songInfo).toBeUndefined();
 
     const payload: SelectSongPayload = {
