@@ -6,18 +6,20 @@ import {
 import { WebSocket } from 'ws';
 import {
   LOBBYMAN,
-  Lobby,
+  LobbyCode,
   LobbyInfo,
+  Player,
   ROOMMAN,
   SocketId,
 } from '../types/models.types';
 import {
-  disconnectMachine,
   disconnectSpectator,
   canJoinLobby,
   generateLobbyCode,
   getPlayerCountForLobby,
-  getLobbyState,
+  RETAINED_PLAYER_KEYS,
+  inSongSelect,
+  responseStatusFailure,
 } from './utils';
 import {
   CreateLobbyData,
@@ -27,12 +29,13 @@ import {
   LobbySpectatedPayload,
   ResponseStatusPayload,
   EventMessage,
-  MessageType as EventType,
+  EventType,
   SpectateLobbyPayload,
   UpdateMachinePayload,
   SelectSongPayload,
+  LobbyStatePayload,
 } from './events.types';
-import { merge } from 'lodash';
+import { merge, pick } from 'lodash';
 
 import { ClientService } from '../clients/client.service';
 
@@ -126,7 +129,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.clients.disconnect(socketId);
 
     if (socketId in LOBBYMAN.machineConnections) {
-      disconnectMachine(socketId, this.clients);
+      this.disconnectMachine(socketId);
     }
 
     if (socketId in LOBBYMAN.spectatorConnections) {
@@ -151,7 +154,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId, this.clients);
+      this.disconnectMachine(socketId);
     }
 
     let code = generateLobbyCode();
@@ -174,10 +177,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Created lobby ' + code);
 
-    const stateMessage = getLobbyState(socketId);
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, code);
-    }
+    this.broadcastLobbyState(code);
     return undefined;
   }
 
@@ -211,7 +211,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.machineConnections) {
       // A machine can only join one lobby at a time.
-      disconnectMachine(socketId, this.clients);
+      this.disconnectMachine(socketId);
     }
 
     const lobby = LOBBYMAN.lobbies[code];
@@ -234,12 +234,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     LOBBYMAN.machineConnections[socketId] = code;
     console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
-    const stateMessage = getLobbyState(socketId);
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, lobby.code);
-    }
+    this.broadcastLobbyState(code);
+
     return undefined;
-    // return responseStatusSuccess('joinLobby');
   }
 
   /**
@@ -255,32 +252,28 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     const lobby = LOBBYMAN.lobbies[code];
 
-    const inSongSelectBefore = inSongSelect(lobby);
+    // Merge the incoming machine data with the respective lobby's machine
+    const playersInSongSelectBefore = inSongSelect(lobby);
     merge(lobby.machines[socketId], machine);
-    const inSongSelectAfter = inSongSelect(lobby);
+    const playersInSongSelectAfter = inSongSelect(lobby);
 
-    if (!inSongSelectBefore && inSongSelectAfter) {
+    // If all players have transitioned back to song select,
+    // Ensure the scores and currently-selected song get reset
+    if (!playersInSongSelectBefore && playersInSongSelectAfter) {
       lobby.songInfo = undefined;
       Object.values(lobby.machines).forEach((machine) => {
         // Only retain relevant fields
         if (machine.player1) {
-          const { playerId, profileName, screenName } = machine.player1;
-          machine.player1 = { playerId, profileName, screenName };
+          machine.player1 = pick(machine.player1, RETAINED_PLAYER_KEYS);
         }
         if (machine.player2) {
-          const { playerId, profileName, screenName } = machine.player2;
-          machine.player2 = { playerId, profileName, screenName };
+          machine.player2 = pick(machine.player2, RETAINED_PLAYER_KEYS);
         }
       });
     }
 
-    const stateMessage = getLobbyState(socketId);
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, lobby.code);
-    }
-
+    this.broadcastLobbyState(lobby.code);
     return undefined;
-    // return responseStatusSuccess('updateMachine');
   }
 
   /**
@@ -293,10 +286,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!code) {
       return responseStatusFailure('lobbyState', 'Machine not found');
     }
-    const stateMessage = getLobbyState(socketId);
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, code);
-    }
+    this.broadcastLobbyState(code);
 
     return undefined;
   }
@@ -315,13 +305,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     lobby.songInfo = songInfo;
 
-    const stateMessage = getLobbyState(socketId);
-    if (stateMessage) {
-      this.clients.sendLobby(stateMessage, code);
-    }
+    this.broadcastLobbyState(code);
 
     return undefined;
-    // return responseStatusSuccess('selectSong');
   }
 
   /**
@@ -334,7 +320,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     {},
   ): Promise<EventMessage<LobbyLeftPayload>> {
     let left = false;
-    left = disconnectMachine(socketId, this.clients);
+    left = this.disconnectMachine(socketId);
     return { event: 'lobbyLeft', data: { left } };
   }
 
@@ -392,41 +378,87 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     console.log('Found ' + lobbies.length + ' lobbies');
     return { event: 'lobbySearched', data: { lobbies } };
   }
-}
 
-function responseStatus(
-  event: EventType,
-  success: boolean,
-  message?: string,
-): EventMessage<ResponseStatusPayload> {
-  return {
-    event: 'responseStatus',
-    data: {
-      event,
-      success,
-      message,
-    },
-  };
-}
-
-function responseStatusFailure(
-  event: EventType,
-  message: string,
-): EventMessage<ResponseStatusPayload> {
-  return responseStatus(event, false, message);
-}
-
-function inSongSelect(lobby: Lobby): boolean {
-  let selecting = true;
-  Object.values(lobby.machines).forEach((machine) => {
-    if (machine.player1 && machine.player1.screenName !== 'ScreenSelectMusic') {
-      selecting = false;
-      return;
+  private broadcastLobbyState(code: LobbyCode) {
+    const lobby = this.getLobbyState(code);
+    if (lobby) {
+      this.clients.sendLobby(lobby, code);
     }
-    if (machine.player2 && machine.player2.screenName !== 'ScreenSelectMusic') {
-      selecting = false;
-      return;
+  }
+
+  private getLobbyState(
+    code: LobbyCode,
+  ): EventMessage<LobbyStatePayload> | null {
+    // Send back the machine state with the socket ids omitted
+    const players: Player[] = [];
+    const lobby = LOBBYMAN.lobbies[code];
+    Object.values(lobby.machines).forEach((machine) => {
+      const { player1, player2 } = machine;
+      if (player1) {
+        players.push(player1);
+      }
+      if (player2) {
+        players.push(player2);
+      }
+    });
+    const { songInfo } = lobby;
+
+    return { event: 'lobbyState', data: { players, songInfo, code } };
+  }
+
+  /**
+   * Makes a machine leave a lobby. If the machine was the last player in the
+   * lobby, the lobby will be deleted and all spectators will be disconnected.
+   * @param socketId, The socket ID of the machine to disconnect.
+   * @returns True if the machine left the lobby, false otherwise.
+   */
+  private disconnectMachine(socketId: SocketId): boolean {
+    const code = LOBBYMAN.machineConnections[socketId];
+    if (code === undefined) {
+      return false;
     }
-  });
-  return selecting;
+
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby === undefined) {
+      return false;
+    }
+
+    const machine = lobby.machines[socketId];
+    if (machine === undefined) {
+      return false;
+    }
+
+    if (machine.socketId) {
+      if (machine.socketId in LOBBYMAN.machineConnections) {
+        delete LOBBYMAN.machineConnections[machine.socketId];
+      }
+
+      ROOMMAN.leave(machine.socketId, code);
+
+      // Don't disconnect here, as we may be re-using the connection.
+      // In the case of `leaveLobby`, the client can manually disconnect.
+    }
+    delete lobby.machines[socketId];
+    delete LOBBYMAN.machineConnections[socketId];
+
+    if (getPlayerCountForLobby(lobby) === 0) {
+      for (const spectator of Object.values(lobby.spectators)) {
+        if (spectator.socketId) {
+          ROOMMAN.leave(spectator.socketId, code);
+          // Force a disconnect. If there are no more players in the lobby,
+          // we should remove the spectators as well.
+          this.clients.disconnect(spectator.socketId);
+          delete LOBBYMAN.spectatorConnections[spectator.socketId];
+        }
+      }
+      delete LOBBYMAN.lobbies[code];
+    } else {
+      // When a client disconnects, notify other clients
+      const stateMessage = this.getLobbyState(code);
+      if (stateMessage) {
+        this.clients.sendLobby(stateMessage, code);
+      }
+    }
+    return true;
+  }
 }

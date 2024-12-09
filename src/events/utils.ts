@@ -1,13 +1,20 @@
-import { ClientService } from '../clients/client.service';
 import {
   LOBBYMAN,
   Lobby,
-  LobbyCode,
   Player,
   ROOMMAN,
   SocketId,
 } from '../types/models.types';
-import { LobbyStatePayload, EventMessage } from './events.types';
+import { EventMessage, EventType, ResponseStatusPayload } from './events.types';
+
+/** Keys retained when the game state is reset.
+ *  @see updateMachine */
+export const RETAINED_PLAYER_KEYS: Array<keyof Player> = [
+  'playerId',
+  'profileName',
+  'screenName',
+  'ready',
+];
 
 /**
  * Determines if the correct credentials are provided to join a lobby.
@@ -64,65 +71,6 @@ export function getPlayerCountForLobby(lobby: Lobby): number {
 }
 
 /**
- * Makes a machine leave a lobby. If the machine was the last player in the
- * lobby, the lobby will be deleted and all spectators will be disconnected.
- * @param socketId, The socket ID of the machine to disconnect.
- * @returns True if the machine left the lobby, false otherwise.
- */
-export function disconnectMachine(
-  socketId: SocketId,
-  clients: ClientService,
-): boolean {
-  const code = LOBBYMAN.machineConnections[socketId];
-  if (code === undefined) {
-    return false;
-  }
-
-  const lobby = LOBBYMAN.lobbies[code];
-  if (lobby === undefined) {
-    return false;
-  }
-
-  const machine = lobby.machines[socketId];
-  if (machine === undefined) {
-    return false;
-  }
-
-  if (machine.socketId) {
-    if (machine.socketId in LOBBYMAN.machineConnections) {
-      delete LOBBYMAN.machineConnections[machine.socketId];
-    }
-
-    ROOMMAN.leave(machine.socketId, code);
-
-    // Don't disconnect here, as we may be re-using the connection.
-    // In the case of `leaveLobby`, the client can manually disconnect.
-  }
-  delete lobby.machines[socketId];
-  delete LOBBYMAN.machineConnections[socketId];
-
-  if (getPlayerCountForLobby(lobby) === 0) {
-    for (const spectator of Object.values(lobby.spectators)) {
-      if (spectator.socketId) {
-        ROOMMAN.leave(spectator.socketId, code);
-        // Force a disconnect. If there are no more players in the lobby,
-        // we should remove the spectators as well.
-        clients.disconnect(spectator.socketId);
-        delete LOBBYMAN.spectatorConnections[spectator.socketId];
-      }
-    }
-    delete LOBBYMAN.lobbies[code];
-  } else {
-    // When a client disconnects, notify other clients
-    const stateMessage = getLobbyStateForCode(code);
-    if (stateMessage) {
-      clients.sendLobby(stateMessage, code);
-    }
-  }
-  return true;
-}
-
-/**
  * Makes a spectator leave a lobby.
  * @param socketId, The socket ID of the spectator to disconnect.
  * @returns, True if the spectator left the lobby, false otherwise.
@@ -167,32 +115,48 @@ export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   return LOBBYMAN.lobbies[code];
 }
 
-export function getLobbyState(
-  socketId: SocketId,
-): EventMessage<LobbyStatePayload> | null {
-  const lobby = getLobbyForMachine(socketId);
-  if (lobby === undefined) {
-    return null;
-  }
-  return getLobbyStateForCode(lobby.code);
+/**
+ * Constructs a ResponseStatus event with a success or fail.
+ */
+export function responseStatus(
+  event: EventType,
+  success: boolean,
+  message?: string,
+): EventMessage<ResponseStatusPayload> {
+  return {
+    event: 'responseStatus',
+    data: {
+      event,
+      success,
+      message,
+    },
+  };
 }
 
-export function getLobbyStateForCode(
-  code: LobbyCode,
-): EventMessage<LobbyStatePayload> | null {
-  // Send back the machine state with the socket ids omitted
-  const players: Player[] = [];
-  const lobby = LOBBYMAN.lobbies[code];
-  Object.values(lobby.machines).forEach((machine) => {
-    const { player1, player2 } = machine;
-    if (player1) {
-      players.push(player1);
+/**
+ * Constructs a Response status event with a failure.
+ * @param event
+ * @param message
+ * @returns
+ */
+export function responseStatusFailure(
+  event: EventType,
+  message: string,
+): EventMessage<ResponseStatusPayload> {
+  return responseStatus(event, false, message);
+}
+
+export function inSongSelect(lobby: Lobby): boolean {
+  let selecting = true;
+  Object.values(lobby.machines).forEach(({ player1, player2 }) => {
+    if (player1 && player1.screenName !== 'ScreenSelectMusic') {
+      selecting = false;
+      return;
     }
-    if (player2) {
-      players.push(player2);
+    if (player2 && player2.screenName !== 'ScreenSelectMusic') {
+      selecting = false;
+      return;
     }
   });
-  const { songInfo } = lobby;
-
-  return { event: 'lobbyState', data: { players, songInfo, code } };
+  return selecting;
 }
