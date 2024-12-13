@@ -81,7 +81,6 @@ export class ClientService {
     // Generate an id for the entry, set and return it
     const socketId = uuid();
     this.clients[socketId] = socket;
-    console.log('Socket connected: ', socketId);
     return socketId;
   }
 }
