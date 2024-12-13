@@ -25,7 +25,7 @@ export const RETAINED_PLAYER_KEYS: Array<keyof Player> = [
  */
 export function canJoinLobby(code: string, password: string) {
   // Does the lobby we're trying to join exist?
-  const lobby = LOBBYMAN.lobbies[code];
+  const lobby = LOBBYMAN.lobbies[code.toUpperCase()];
   if (lobby === undefined) {
     return false;
   }
@@ -105,9 +105,6 @@ export function disconnectSpectator(socketId: SocketId): boolean {
  */
 export function getLobbyForMachine(socketId: SocketId): Lobby | undefined {
   const code = LOBBYMAN.machineConnections[socketId];
-
-  console.log('Getting lobby state', code, socketId);
-
   if (code === undefined) {
     return undefined;
   }

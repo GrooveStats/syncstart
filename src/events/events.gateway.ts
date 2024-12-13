@@ -26,7 +26,6 @@ import {
   JoinLobbyPayload,
   LobbyLeftPayload,
   LobbySearchedPayload,
-  LobbySpectatedPayload,
   ResponseStatusPayload,
   EventMessage,
   EventType,
@@ -86,9 +85,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           return;
         }
 
-        console.log('Received message:', JSON.stringify(message, null, 2));
         if (!message.event) {
-          console.log('No event, ignoring');
           return;
         }
         if (!this.handlers[message.event]) {
@@ -102,7 +99,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const handlerBinded = handler.bind(this);
         const response = await handlerBinded(socketId, message.data);
         if (response) {
-          console.log('Sending response', JSON.stringify(response, null, 2));
           this.clients.sendSocket(response, socketId);
         }
       } catch (e) {
@@ -173,9 +169,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       },
       spectators: {},
     };
+    console.log('Created lobby', { code });
+
     ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
-    console.log('Created lobby ' + code);
 
     this.broadcastLobbyState(code);
     return undefined;
@@ -232,7 +229,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
-    console.log('Machine ' + `${socketId}` + 'joined ' + `${code}`);
 
     this.broadcastLobbyState(code);
 
@@ -335,33 +331,31 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async spectateLobby(
     socketId: SocketId,
     { spectator, code, password }: SpectateLobbyPayload,
-  ): Promise<EventMessage<LobbySpectatedPayload>> {
-    const lobby = LOBBYMAN.lobbies[code];
-
-    if (!lobby) {
-      return { event: 'lobbySpectated', data: { spectators: 0 } };
+  ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
+    if (!canJoinLobby(code, password)) {
+      return responseStatusFailure(
+        'spectateLobby',
+        'No lobby found with code ' + code,
+      );
     }
 
-    if (
-      !(socketId in LOBBYMAN.machineConnections) &&
-      canJoinLobby(code, password)
-    ) {
-      if (socketId in LOBBYMAN.spectatorConnections) {
-        // A spectator can only spectate one lobby at a time.
-        disconnectSpectator(socketId);
-      }
-
-      lobby.spectators[socketId] = {
-        ...spectator,
-        socketId,
-      };
-      ROOMMAN.join(socketId, code);
-      LOBBYMAN.spectatorConnections[socketId] = code;
+    if (socketId in LOBBYMAN.spectatorConnections) {
+      // A spectator can only spectate one lobby at a time.
+      disconnectSpectator(socketId);
     }
-    return {
-      event: 'lobbySpectated',
-      data: { spectators: Object.keys(lobby.spectators).length },
+    const lobby = LOBBYMAN.lobbies[code.toUpperCase()];
+    lobby.spectators[socketId] = {
+      ...spectator,
+      socketId,
     };
+    ROOMMAN.join(socketId, code);
+    LOBBYMAN.spectatorConnections[socketId] = code;
+
+    // Broadcasts an updated spectator count to all machines
+    // and the initial lobby state for the newly-added spectator
+    this.broadcastLobbyState(code);
+
+    return undefined;
   }
 
   /**
@@ -375,7 +369,6 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       playerCount: getPlayerCountForLobby(l),
       spectatorCount: Object.keys(l.spectators).length,
     }));
-    console.log('Found ' + lobbies.length + ' lobbies');
     return { event: 'lobbySearched', data: { lobbies } };
   }
 
@@ -403,7 +396,19 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
     const { songInfo } = lobby;
 
-    return { event: 'lobbyState', data: { players, songInfo, code } };
+    return {
+      event: 'lobbyState',
+      data: {
+        players: players.sort((p1, p2) => {
+          if (p1.exScore && p2.exScore) {
+            return p2.exScore - p1.exScore;
+          }
+          return p1.profileName > p2.profileName ? 1 : -1;
+        }),
+        songInfo,
+        code,
+      },
+    };
   }
 
   /**
@@ -451,6 +456,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           delete LOBBYMAN.spectatorConnections[spectator.socketId];
         }
       }
+      delete ROOMMAN.rooms[code];
       delete LOBBYMAN.lobbies[code];
     } else {
       // When a client disconnects, notify other clients
