@@ -53,8 +53,6 @@ describe('EventsGateway', () => {
 
   describe('generalLobbyUsage', () => {
     it('createLobby', async () => {
-      console.log('Create Lobby');
-
       const create = await send<CreateLobbyData, undefined>(client, {
         event: 'createLobby',
         data: {
