@@ -14,6 +14,7 @@ import {
   SpectateLobbyPayload,
   UpdateMachinePayload,
   SelectSongPayload,
+  LobbyStatePayload,
 } from './events.types';
 import { WebSocket } from 'ws';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -85,7 +86,7 @@ describe('EventsGateway', () => {
       expect(search.data.lobbies[0].playerCount).toBe(1);
       expect(search.data.lobbies[0].spectatorCount).toBe(0);
 
-      const spectate = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
+      const spectate = await send<SpectateLobbyPayload, ResponseStatusPayload>(
         client,
         {
           event: 'spectateLobby',
@@ -98,15 +99,17 @@ describe('EventsGateway', () => {
           },
         },
       );
-      expect(spectate.event).toBe('lobbySpectated');
-      expect(spectate.data.spectators).toBe(0); // Spectate should fail as a player can't also be a spectator.
+      expect(spectate.event).toBe('responseStatus');
+      expect(spectate.data.message).toBe(
+        'Connection is already being used to play in a lobby, cannot spectate.',
+      ); // Spectate should fail as a player can't also be a spectator.
 
       const client2 = new WebSocket('ws://localhost:' + port);
       await new Promise((resolve) => {
         client2.on('open', resolve);
       });
 
-      const spectate2 = await send<SpectateLobbyPayload, LobbySpectatedPayload>(
+      const spectate2 = await send<SpectateLobbyPayload, LobbyStatePayload>(
         client2,
         {
           event: 'spectateLobby',
@@ -119,8 +122,9 @@ describe('EventsGateway', () => {
           },
         },
       );
-      expect(spectate2.event).toBe('lobbySpectated');
-      expect(spectate2.data.spectators).toBe(1); // socket2 is a different connection, so we can spectate now.
+      expect(spectate2.event).toBe('lobbyState');
+      expect(spectate2.data.spectators.length).toBe(1); // socket2 is a different connection, so we can spectate now.
+      expect(spectate2.data.spectators[0]).toBe('Brat');
 
       const search2 = await send<SearchLobbyPayload, LobbySearchedPayload>(
         client,

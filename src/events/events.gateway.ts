@@ -339,6 +339,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       );
     }
 
+    if (socketId in LOBBYMAN.machineConnections) {
+      return responseStatusFailure(
+        'spectateLobby',
+        'Connection is already being used to play in a lobby, cannot spectate.',
+      );
+    }
+
     if (socketId in LOBBYMAN.spectatorConnections) {
       // A spectator can only spectate one lobby at a time.
       disconnectSpectator(socketId);
@@ -405,6 +412,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           }
           return p1.profileName > p2.profileName ? 1 : -1;
         }),
+        spectators: Object.values(lobby.spectators).map((s) => s.profileName),
         songInfo,
         code,
       },
