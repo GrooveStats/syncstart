@@ -7,7 +7,6 @@ import {
   LeaveLobbyPayload,
   LobbyLeftPayload,
   LobbySearchedPayload,
-  LobbySpectatedPayload,
   ResponseStatusPayload,
   EventMessage,
   SearchLobbyPayload,
