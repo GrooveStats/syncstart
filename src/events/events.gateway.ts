@@ -212,12 +212,15 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const lobby = LOBBYMAN.lobbies[code];
+    if (lobby === undefined) {
+      return responseStatusFailure('joinLobby', 'Lobby not found');
+    }
     if (Object.keys(lobby.machines).length >= 4) {
-      responseStatusFailure('joinLobby', 'Too many machines in the lobby');
+      return responseStatusFailure('joinLobby', 'Too many machines in the lobby');
     }
 
     if (lobby.songInfo) {
-      responseStatusFailure(
+      return responseStatusFailure(
         'joinLobby',
         'A song is already selected, please try later.',
       );
@@ -247,6 +250,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return responseStatusFailure('updateMachine', 'Machine not found');
     }
     const lobby = LOBBYMAN.lobbies[code];
+    if (lobby === undefined) {
+      return responseStatusFailure('updateMachine', 'Lobby not found');
+    }
 
     // Merge the incoming machine data with the respective lobby's machine
     const playersInSongSelectBefore = inSongSelect(lobby);
@@ -296,6 +302,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return responseStatusFailure('selectSong', 'Machine not found');
     }
     const lobby = LOBBYMAN.lobbies[code];
+    if (lobby === undefined) {
+      return responseStatusFailure('selectSong', 'Lobby not found');
+    }
     if (lobby.songInfo) {
       return responseStatusFailure('selectSong', 'Song already selected');
     }
@@ -392,6 +401,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Send back the machine state with the socket ids omitted
     const players: Player[] = [];
     const lobby = LOBBYMAN.lobbies[code];
+    if (lobby === undefined) {
+      return null;
+    }
     Object.values(lobby.machines).forEach((machine) => {
       const { player1, player2 } = machine;
       if (player1) {
