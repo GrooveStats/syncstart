@@ -218,7 +218,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return responseStatusFailure('joinLobby', 'Lobby not found');
     }
     if (Object.keys(lobby.machines).length >= 4) {
-      return responseStatusFailure('joinLobby', 'Too many machines in the lobby');
+      return responseStatusFailure(
+        'joinLobby',
+        'Too many machines in the lobby',
+      );
     }
 
     if (lobby.songInfo) {
