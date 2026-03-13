@@ -190,7 +190,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     socketId: SocketId,
     { machine, code, password }: JoinLobbyPayload,
   ): Promise<EventMessage<ResponseStatusPayload> | undefined> {
-    if (!canJoinLobby(code, password)) {
+    const normalizedCode = code.toUpperCase();
+
+    if (!canJoinLobby(normalizedCode, password)) {
       return {
         event: 'responseStatus',
         data: {
@@ -211,7 +213,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.disconnectMachine(socketId);
     }
 
-    const lobby = LOBBYMAN.lobbies[code];
+    const lobby = LOBBYMAN.lobbies[normalizedCode];
     if (lobby === undefined) {
       return responseStatusFailure('joinLobby', 'Lobby not found');
     }
@@ -230,10 +232,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ...machine,
       socketId,
     };
-    ROOMMAN.join(socketId, code);
-    LOBBYMAN.machineConnections[socketId] = code;
+    ROOMMAN.join(socketId, normalizedCode);
+    LOBBYMAN.machineConnections[socketId] = normalizedCode;
 
-    this.broadcastLobbyState(code);
+    this.broadcastLobbyState(normalizedCode);
 
     return undefined;
   }
