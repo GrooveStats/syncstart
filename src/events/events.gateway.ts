@@ -3,6 +3,7 @@ import {
   OnGatewayDisconnect,
   WebSocketGateway,
 } from '@nestjs/websockets';
+import { OnApplicationShutdown } from '@nestjs/common';
 import { WebSocket } from 'ws';
 import {
   LOBBYMAN,
@@ -43,7 +44,9 @@ import { ClientService } from '../clients/client.service';
     origin: '*',
   },
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
+{
   /** Maps received message types to a callback function to handle those message.
    * The callback function may return a message to send to the calling socket */
   private handlers: Partial<
@@ -52,6 +55,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       (socketId: SocketId, payload: any) => Promise<EventMessage | undefined>
     >
   >;
+
+  /** Cleanup interval in milliseconds */
+  private readonly CLEANUP_INTERVAL = 30000; // 30 seconds
+  /** Lobby inactivity timeout in milliseconds */
+  private readonly LOBBY_INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  
+  private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   constructor(private readonly clients: ClientService) {}
 
@@ -66,6 +76,81 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       lobbyState: this.lobbyState,
       selectSong: this.selectSong,
     };
+    
+    // Start the cleanup interval to remove stale lobbies
+    this.startCleanupInterval();
+  }
+
+  /**
+   * Updates a lobby's lastUpdate timestamp to track activity.
+   * This is used for inactivity-based cleanup of zombie lobbies.
+   * @param code The lobby code to update
+   */
+  private updateLobbyActivity(code: LobbyCode): void {
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby) {
+      lobby.lastUpdate = Date.now();
+    }
+  }
+
+  /**
+   * Starts the periodic cleanup interval to remove stale lobbies.
+   * Lobbies that haven't been updated for LOBBY_INACTIVITY_TIMEOUT are deleted.
+   */
+  private startCleanupInterval(): void {
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+    }
+    this.cleanupIntervalId = setInterval(() => {
+      this.cleanupStaleLobbies();
+    }, this.CLEANUP_INTERVAL);
+  }
+
+  /**
+   * Cleans up lobbies that haven't been updated within LOBBY_INACTIVITY_TIMEOUT.
+   * This prevents zombie lobbies from accumulating in memory.
+   */
+  private cleanupStaleLobbies(): void {
+    const now = Date.now();
+    const lobbyCodes = Object.keys(LOBBYMAN.lobbies);
+    
+    for (const code of lobbyCodes) {
+      const lobby = LOBBYMAN.lobbies[code];
+      if (!lobby) {
+        continue;
+      }
+      
+      const timeSinceLastUpdate = now - lobby.lastUpdate;
+      if (timeSinceLastUpdate > this.LOBBY_INACTIVITY_TIMEOUT) {
+        console.log(
+          `Cleaning up stale lobby ${code} (inactive for ${Math.round(
+            timeSinceLastUpdate / 1000 / 60,
+          )} minutes)`,
+        );
+        
+        // Clean up spectators - forcefully disconnect them
+        for (const spectator of Object.values(lobby.spectators)) {
+          if (spectator.socketId) {
+            ROOMMAN.leave(spectator.socketId, code);
+            this.clients.disconnect(spectator.socketId, 'Lobby destroyed due to inactivity');
+            delete LOBBYMAN.spectatorConnections[spectator.socketId];
+          }
+        }
+        
+        // Clean up machines - forcefully disconnect them
+        for (const machine of Object.values(lobby.machines)) {
+          if (machine.socketId) {
+            ROOMMAN.leave(machine.socketId, code);
+            this.clients.disconnect(machine.socketId, 'Lobby destroyed due to inactivity');
+            delete LOBBYMAN.machineConnections[machine.socketId];
+          }
+        }
+        
+        // Delete the lobby and its room
+        delete ROOMMAN.rooms[code];
+        delete LOBBYMAN.lobbies[code];
+      }
+    }
   }
 
   /**
@@ -117,7 +202,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       socketId = this.clients.getSocketId(socket);
     } catch (e) {
-      console.error('Disconnect not handled, socketId not found for socket');
+      // Socket was already removed from tracking (expected during cleanup-initiated disconnects)
       return;
     }
     console.info('Disconnecting socket ' + socketId);
@@ -130,6 +215,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (socketId in LOBBYMAN.spectatorConnections) {
       disconnectSpectator(socketId);
+    }
+  }
+
+  /**
+   * Cleans up resources when the application shuts down.
+   * @override OnApplicationShutdown
+   */
+  async onApplicationShutdown() {
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
     }
   }
 
@@ -168,11 +264,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       },
       spectators: {},
+      lastUpdate: Date.now(),
     };
     console.log('Created lobby', { code });
 
     ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
+    this.updateLobbyActivity(code);
 
     this.broadcastLobbyState(code);
     return undefined;
@@ -238,6 +336,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ROOMMAN.join(socketId, normalizedCode);
     LOBBYMAN.machineConnections[socketId] = normalizedCode;
 
+    this.updateLobbyActivity(normalizedCode);
     this.broadcastLobbyState(normalizedCode);
 
     return undefined;
@@ -279,6 +378,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
 
+    this.updateLobbyActivity(lobby.code);
     this.broadcastLobbyState(lobby.code);
     return undefined;
   }
@@ -315,6 +415,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     lobby.songInfo = songInfo;
 
+    this.updateLobbyActivity(code);
     this.broadcastLobbyState(code);
 
     return undefined;
@@ -329,8 +430,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     socketId: SocketId,
     {},
   ): Promise<EventMessage<LobbyLeftPayload>> {
+    const code = LOBBYMAN.machineConnections[socketId];
     let left = false;
     left = this.disconnectMachine(socketId);
+    if (code) {
+      this.updateLobbyActivity(code);
+    }
     return { event: 'lobbyLeft', data: { left } };
   }
 
@@ -374,6 +479,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Broadcasts an updated spectator count to all machines
     // and the initial lobby state for the newly-added spectator
+    this.updateLobbyActivity(code.toUpperCase());
     this.broadcastLobbyState(code);
 
     return undefined;
