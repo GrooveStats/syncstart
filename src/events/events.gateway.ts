@@ -60,7 +60,7 @@ export class EventsGateway
   private readonly CLEANUP_INTERVAL = 30000; // 30 seconds
   /** Lobby inactivity timeout in milliseconds */
   private readonly LOBBY_INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-  
+
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   constructor(private readonly clients: ClientService) {}
@@ -76,7 +76,7 @@ export class EventsGateway
       lobbyState: this.lobbyState,
       selectSong: this.selectSong,
     };
-    
+
     // Start the cleanup interval to remove stale lobbies
     this.startCleanupInterval();
   }
@@ -113,13 +113,13 @@ export class EventsGateway
   private cleanupStaleLobbies(): void {
     const now = Date.now();
     const lobbyCodes = Object.keys(LOBBYMAN.lobbies);
-    
+
     for (const code of lobbyCodes) {
       const lobby = LOBBYMAN.lobbies[code];
       if (!lobby) {
         continue;
       }
-      
+
       const timeSinceLastUpdate = now - lobby.lastUpdate;
       if (timeSinceLastUpdate > this.LOBBY_INACTIVITY_TIMEOUT) {
         console.log(
@@ -127,25 +127,31 @@ export class EventsGateway
             timeSinceLastUpdate / 1000 / 60,
           )} minutes)`,
         );
-        
+
         // Clean up spectators - forcefully disconnect them
         for (const spectator of Object.values(lobby.spectators)) {
           if (spectator.socketId) {
             ROOMMAN.leave(spectator.socketId, code);
-            this.clients.disconnect(spectator.socketId, 'Lobby destroyed due to inactivity');
+            this.clients.disconnect(
+              spectator.socketId,
+              'Lobby destroyed due to inactivity',
+            );
             delete LOBBYMAN.spectatorConnections[spectator.socketId];
           }
         }
-        
+
         // Clean up machines - forcefully disconnect them
         for (const machine of Object.values(lobby.machines)) {
           if (machine.socketId) {
             ROOMMAN.leave(machine.socketId, code);
-            this.clients.disconnect(machine.socketId, 'Lobby destroyed due to inactivity');
+            this.clients.disconnect(
+              machine.socketId,
+              'Lobby destroyed due to inactivity',
+            );
             delete LOBBYMAN.machineConnections[machine.socketId];
           }
         }
-        
+
         // Delete the lobby and its room
         delete ROOMMAN.rooms[code];
         delete LOBBYMAN.lobbies[code];

@@ -82,7 +82,7 @@ export interface Lobby {
   spectators: Record<SocketId, Spectator>;
 
   songInfo?: SongInfo;
-  
+
   // Timestamp of the last activity in this lobby (for inactivity cleanup)
   lastUpdate: number;
 }
