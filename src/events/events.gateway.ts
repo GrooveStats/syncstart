@@ -366,7 +366,28 @@ export class EventsGateway
 
     // Merge the incoming machine data with the respective lobby's machine
     const playersInSongSelectBefore = inSongSelect(lobby);
+    const existingMachine = lobby.machines[socketId];
+    const screenBefore =
+      existingMachine?.player1?.screenName ??
+      existingMachine?.player2?.screenName;
     merge(lobby.machines[socketId], machine);
+
+    // Both players share the same screen, so check the transition once
+    const updatedMachine = lobby.machines[socketId];
+    const screenAfter =
+      updatedMachine.player1?.screenName ?? updatedMachine.player2?.screenName;
+    const didTransitionToScreenEvaluationStage =
+      screenBefore !== 'ScreenEvaluationStage' &&
+      screenAfter === 'ScreenEvaluationStage';
+
+    if (didTransitionToScreenEvaluationStage && lobby.songInfo) {
+      updatedMachine.lastScreenEvaluationStage = {
+        songInfo: lobby.songInfo,
+        player1: updatedMachine.player1,
+        player2: updatedMachine.player2,
+      };
+    }
+
     const playersInSongSelectAfter = inSongSelect(lobby);
 
     // If all players have transitioned back to song select,

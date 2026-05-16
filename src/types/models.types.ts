@@ -55,7 +55,7 @@ export interface Player {
     | 'ScreenSelectMusic'
     | 'ScreenGameplay'
     | 'ScreenPlayerOptions'
-    | 'ScreenEvaluation';
+    | 'ScreenEvaluationStage';
   ready: boolean;
 
   judgments?: Judgments;
@@ -70,6 +70,11 @@ export interface Player {
 export interface Machine {
   player1?: Player;
   player2?: Player;
+  lastScreenEvaluationStage?: {
+    songInfo: SongInfo;
+    player1?: Player;
+    player2?: Player;
+  };
   socketId?: SocketId;
 }
 
