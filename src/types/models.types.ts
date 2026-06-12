@@ -55,7 +55,7 @@ export interface Player {
     | 'ScreenSelectMusic'
     | 'ScreenGameplay'
     | 'ScreenPlayerOptions'
-    | 'ScreenEvaluation';
+    | 'ScreenEvaluationStage';
   ready: boolean;
 
   judgments?: Judgments;
