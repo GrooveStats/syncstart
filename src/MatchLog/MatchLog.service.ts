@@ -3,7 +3,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import Database = require('better-sqlite3');
 import { v4 as uuidv4 } from 'uuid';
+import { omit } from 'lodash';
 import { Lobby, Player } from '../types/models.types';
+import { Match, NewScoreRow, ScoreRow } from './MatchLog.types';
 
 @Injectable()
 export class MatchLogService implements OnApplicationShutdown {
@@ -70,41 +72,87 @@ export class MatchLogService implements OnApplicationShutdown {
          fantasticPlus, fantastics, excellents, greats, decents, wayOffs,
          misses, totalSteps, minesHit, totalMines, holdsHeld, totalHolds,
          rollsHeld, totalRolls, songTitle, songArtist, songPath)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES
+        (@matchId, @dateAdded, @lobbyCode, @playerId, @profileName, @score, @exScore,
+         @fantasticPlus, @fantastics, @excellents, @greats, @decents, @wayOffs,
+         @misses, @totalSteps, @minesHit, @totalMines, @holdsHeld, @totalHolds,
+         @rollsHeld, @totalRolls, @songTitle, @songArtist, @songPath)`,
     );
 
     const insertManyScores = this.db.transaction(() => {
       for (const player of players) {
         const judgments = player.judgments;
-        insertQuery.run(
+        const row: NewScoreRow = {
           matchId,
           dateAdded,
-          lobby.code,
-          player.playerId,
-          player.profileName,
-          player.score ?? null,
-          player.exScore ?? null,
-          judgments?.fantasticPlus ?? null,
-          judgments?.fantastics ?? null,
-          judgments?.excellents ?? null,
-          judgments?.greats ?? null,
-          judgments?.decents ?? null,
-          judgments?.wayOffs ?? null,
-          judgments?.misses ?? null,
-          judgments?.totalSteps ?? null,
-          judgments?.minesHit ?? null,
-          judgments?.totalMines ?? null,
-          judgments?.holdsHeld ?? null,
-          judgments?.totalHolds ?? null,
-          judgments?.rollsHeld ?? null,
-          judgments?.totalRolls ?? null,
-          lobby.songInfo?.title ?? null,
-          lobby.songInfo?.artist ?? null,
-          lobby.songInfo?.songPath ?? null,
-        );
+          lobbyCode: lobby.code,
+          playerId: player.playerId,
+          profileName: player.profileName,
+          score: player.score ?? null,
+          exScore: player.exScore ?? null,
+          fantasticPlus: judgments?.fantasticPlus ?? null,
+          fantastics: judgments?.fantastics ?? null,
+          excellents: judgments?.excellents ?? null,
+          greats: judgments?.greats ?? null,
+          decents: judgments?.decents ?? null,
+          wayOffs: judgments?.wayOffs ?? null,
+          misses: judgments?.misses ?? null,
+          totalSteps: judgments?.totalSteps ?? null,
+          minesHit: judgments?.minesHit ?? null,
+          totalMines: judgments?.totalMines ?? null,
+          holdsHeld: judgments?.holdsHeld ?? null,
+          totalHolds: judgments?.totalHolds ?? null,
+          rollsHeld: judgments?.rollsHeld ?? null,
+          totalRolls: judgments?.totalRolls ?? null,
+          songTitle: lobby.songInfo?.title ?? null,
+          songArtist: lobby.songInfo?.artist ?? null,
+          songPath: lobby.songInfo?.songPath ?? null,
+        };
+        insertQuery.run(row);
       }
     });
     insertManyScores();
+  }
+
+  /**
+   * Returns all logged matches, sorted reverse chronologically (most recent
+   * first).
+   */
+  getMatches(): Match[] {
+    const rows = this.db
+      .prepare<[], ScoreRow>(
+        'SELECT * FROM scores ORDER BY dateAdded DESC, id ASC',
+      )
+      .all();
+
+    const matchesById = new Map<string, Match>();
+    for (const row of rows) {
+      let match = matchesById.get(row.matchId);
+      if (!match) {
+        match = {
+          matchId: row.matchId,
+          dateAdded: row.dateAdded,
+          lobbyCode: row.lobbyCode,
+          isSameSong: true,
+          scores: [],
+        };
+        matchesById.set(row.matchId, match);
+      }
+
+      match.scores.push(omit(row, ['matchId', 'dateAdded', 'lobbyCode']));
+    }
+
+    for (const match of matchesById.values()) {
+      const [first, ...rest] = match.scores;
+      match.isSameSong = rest.every(
+        (score) =>
+          score.songTitle === first.songTitle &&
+          score.songArtist === first.songArtist &&
+          score.songPath === first.songPath,
+      );
+    }
+
+    return Array.from(matchesById.values());
   }
 
   onApplicationShutdown(): void {
