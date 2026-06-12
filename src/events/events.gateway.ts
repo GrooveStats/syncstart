@@ -364,9 +364,17 @@ export class EventsGateway
       return responseStatusFailure('updateMachine', 'Lobby not found');
     }
 
-    // Merge the incoming machine data with the respective lobby's machine
+    // Merge the incoming machine data with the existing machine state,
+    // but remove players that are no longer present in the incoming payload.
     const playersInSongSelectBefore = inSongSelect(lobby);
-    merge(lobby.machines[socketId], machine);
+    const existingMachine = lobby.machines[socketId];
+    if (machine.player1 === undefined) {
+      delete existingMachine.player1;
+    }
+    if (machine.player2 === undefined) {
+      delete existingMachine.player2;
+    }
+    merge(existingMachine, machine);
     const playersInSongSelectAfter = inSongSelect(lobby);
 
     // If all players have transitioned back to song select,

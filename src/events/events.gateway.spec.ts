@@ -203,6 +203,25 @@ describe('EventsGateway', () => {
       const machine = Object.values(lobby.machines)[0];
       expect(omit(machine, 'socketId')).toEqual(update1.machine);
 
+      const update1b: UpdateMachinePayload = {
+        machine: {
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screenName: 'ScreenGameplay',
+            ready: false,
+            score: 0.99,
+          },
+        },
+      };
+      await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
+        event: 'updateMachine',
+        data: update1b,
+      });
+
+      expect(machine.player1).toBeDefined();
+      expect(machine.player2).toBeUndefined();
+
       // If one player goes back to SongSelect (I know, technically not possible for a single machine)
       // The songInfo/scores should persist
       const update2: UpdateMachinePayload = {
