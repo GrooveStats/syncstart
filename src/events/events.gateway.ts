@@ -57,7 +57,7 @@ export class EventsGateway
   /** Cleanup interval in milliseconds */
   private readonly CLEANUP_INTERVAL = 30000; // 30 seconds
   /** Lobby inactivity timeout in milliseconds */
-  private readonly LOBBY_INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  private readonly LOBBY_INACTIVITY_TIMEOUT = 120 * 60 * 1000; // 120 minutes
 
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
