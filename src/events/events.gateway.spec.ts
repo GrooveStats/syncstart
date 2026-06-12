@@ -319,14 +319,28 @@ describe('EventsGateway', () => {
   });
 });
 
+// Broadcast-only events used to keep the lobby list in sync. These can
+// arrive interleaved with request/response messages, so `send` ignores them.
+const LOBBY_LIST_BROADCAST_EVENTS = new Set([
+  'lobbyAdded',
+  'lobbyUpdated',
+  'lobbyRemoved',
+]);
+
 function send<T, R>(
   client: WebSocket,
   message: EventMessage<T>,
 ): Promise<EventMessage<R>> {
   return new Promise((resolve) => {
-    client.on('message', (response: EventMessage) => {
-      resolve(JSON.parse(response.toString()));
-    });
+    const handler = (response: EventMessage) => {
+      const parsed = JSON.parse(response.toString());
+      if (LOBBY_LIST_BROADCAST_EVENTS.has(parsed.event)) {
+        return;
+      }
+      client.off('message', handler);
+      resolve(parsed);
+    };
+    client.on('message', handler);
     client.send(JSON.stringify(message));
   });
 }

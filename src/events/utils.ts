@@ -1,6 +1,7 @@
 import {
   LOBBYMAN,
   Lobby,
+  LobbyCode,
   Player,
   ROOMMAN,
   SocketId,
@@ -75,20 +76,20 @@ export function getPlayerCountForLobby(lobby: Lobby): number {
  * @param socketId, The socket ID of the spectator to disconnect.
  * @returns, True if the spectator left the lobby, false otherwise.
  */
-export function disconnectSpectator(socketId: SocketId): boolean {
+export function disconnectSpectator(socketId: SocketId): LobbyCode | undefined {
   const code = LOBBYMAN.spectatorConnections[socketId];
   if (code === undefined) {
-    return false;
+    return undefined;
   }
 
   const lobby = LOBBYMAN.lobbies[code];
   if (lobby === undefined) {
-    return false;
+    return undefined;
   }
 
   const spectator = lobby.spectators[socketId];
   if (spectator === undefined) {
-    return false;
+    return undefined;
   }
 
   if (spectator.socketId) {
@@ -97,7 +98,7 @@ export function disconnectSpectator(socketId: SocketId): boolean {
   }
   delete lobby.spectators[socketId];
   delete LOBBYMAN.spectatorConnections[socketId];
-  return true;
+  return code;
 }
 
 /** Gets the lobby for specific connection.
