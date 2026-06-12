@@ -375,7 +375,8 @@ export class EventsGateway
     // If all players have just reached the evaluation/results screen,
     // log the completed match.
     if (!isInScreenEvaluationStageBefore && isInScreenEvaluationStageAfter) {
-      this.matchLog.logMatch(lobby);
+      const match = this.matchLog.logMatch(lobby);
+      this.clients.sendAll({ event: 'matchLogged', data: match });
     }
 
     // If all players have transitioned back to song select,

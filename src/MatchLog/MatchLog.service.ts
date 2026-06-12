@@ -71,7 +71,7 @@ export class MatchLogService implements OnApplicationShutdown {
    * chart totals are recorded once per match; each player gets their own
    * row in the `scores` table.
    */
-  logMatch(lobby: Lobby): void {
+  logMatch(lobby: Lobby): Match {
     const players = Object.values(lobby.machines).flatMap((machine) =>
       [machine.player1, machine.player2].filter(
         (player): player is Player => player !== undefined,
@@ -118,6 +118,7 @@ export class MatchLogService implements OnApplicationShutdown {
     );
 
     const insertManyScores = this.db.transaction(() => {
+      const scores: PlayerScore[] = [];
       for (const player of players) {
         const judgments = player.judgments;
         const judgmentSum =
@@ -147,10 +148,17 @@ export class MatchLogService implements OnApplicationShutdown {
           rollsHeld: judgments?.rollsHeld ?? null,
           isValid: judgmentSum === matchRow.totalSteps ? 1 : 0,
         };
-        insertScore.run(row);
+        const { lastInsertRowid } = insertScore.run(row);
+        scores.push({ ...omit(row, ['matchId']), id: Number(lastInsertRowid) });
       }
+      return scores;
     });
-    insertManyScores();
+    const scores = insertManyScores();
+
+    return {
+      ...matchRow,
+      scores,
+    };
   }
 
   /**

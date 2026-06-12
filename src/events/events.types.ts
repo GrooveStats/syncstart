@@ -7,6 +7,7 @@ import {
   SongInfo,
   Spectator,
 } from '../types/models.types';
+import { Match } from '../MatchLog/MatchLog.types';
 
 export type EventType =
   | 'createLobby'
@@ -26,7 +27,8 @@ export type EventType =
   | 'lobbyState'
   | 'selectSong'
   | 'responseStatus'
-  | 'startSong';
+  | 'startSong'
+  | 'matchLogged';
 
 export type EventData =
   | CreateLobbyData
@@ -42,7 +44,8 @@ export type EventData =
   | ReadyUpResultPayload
   | LobbyStatePayload
   | SelectSongPayload
-  | StartSongPayload;
+  | StartSongPayload
+  | MatchLoggedPayload;
 
 export interface EventMessage<T = EventData> {
   event: EventType;
@@ -125,3 +128,5 @@ export interface LobbyStatePayload {
 export interface StartSongPayload {
   start: boolean;
 }
+
+export type MatchLoggedPayload = Match;
