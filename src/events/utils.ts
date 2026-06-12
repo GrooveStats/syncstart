@@ -157,3 +157,22 @@ export function inSongSelect(lobby: Lobby): boolean {
   });
   return selecting;
 }
+
+/**
+ * Determines if every player across every machine in the lobby has reached
+ * the evaluation/results screen.
+ */
+export function isInScreenEvaluationStage(lobby: Lobby): boolean {
+  let isInScreenEvaluationStage = true;
+  Object.values(lobby.machines).forEach(({ player1, player2 }) => {
+    if (player1 && player1.screenName !== 'ScreenEvaluationStage') {
+      isInScreenEvaluationStage = false;
+      return;
+    }
+    if (player2 && player2.screenName !== 'ScreenEvaluationStage') {
+      isInScreenEvaluationStage = false;
+      return;
+    }
+  });
+  return isInScreenEvaluationStage;
+}

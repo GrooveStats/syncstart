@@ -3,6 +3,12 @@
 /node_modules
 /build
 
+# Persistent data
+/data
+
+# Environment variables
+.env
+
 # Logs
 logs
 *.log

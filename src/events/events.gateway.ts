@@ -20,6 +20,7 @@ import {
   getPlayerCountForLobby,
   RETAINED_PLAYER_KEYS,
   inSongSelect,
+  isInScreenEvaluationStage,
   responseStatusFailure,
 } from './utils';
 import {
@@ -38,6 +39,7 @@ import {
 import { merge, pick } from 'lodash';
 
 import { ClientService } from '../clients/client.service';
+import { MatchLogService } from '../MatchLog/MatchLog.service';
 
 @WebSocketGateway({
   cors: {
@@ -63,7 +65,10 @@ export class EventsGateway
 
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
-  constructor(private readonly clients: ClientService) {}
+  constructor(
+    private readonly clients: ClientService,
+    private readonly matchLog: MatchLogService,
+  ) {}
 
   afterInit() {
     this.handlers = {
@@ -366,8 +371,16 @@ export class EventsGateway
 
     // Merge the incoming machine data with the respective lobby's machine
     const playersInSongSelectBefore = inSongSelect(lobby);
+    const isInScreenEvaluationStageBefore = isInScreenEvaluationStage(lobby);
     merge(lobby.machines[socketId], machine);
     const playersInSongSelectAfter = inSongSelect(lobby);
+    const isInScreenEvaluationStageAfter = isInScreenEvaluationStage(lobby);
+
+    // If all players have just reached the evaluation/results screen,
+    // log the completed match.
+    if (!isInScreenEvaluationStageBefore && isInScreenEvaluationStageAfter) {
+      this.matchLog.logMatch(lobby);
+    }
 
     // If all players have transitioned back to song select,
     // Ensure the scores and currently-selected song get reset
