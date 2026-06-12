@@ -41,11 +41,7 @@ import { merge, pick } from 'lodash';
 import { ClientService } from '../clients/client.service';
 import { MatchLogService } from '../MatchLog/MatchLog.service';
 
-@WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
-})
+@WebSocketGateway()
 export class EventsGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
 {
